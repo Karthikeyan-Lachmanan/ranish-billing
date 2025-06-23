@@ -9,7 +9,7 @@ function Products() {
 
   const fetchProducts = async () => {
     try {
-      const res = await fetch("/api/products");
+      const res = await fetch(`${window.location.origin}/api/products`);
       const data = await res.json();
       setProducts(data);
     } catch (err) {
@@ -29,7 +29,7 @@ function Products() {
         ...values,
       };
 
-      const res = await fetch("/api/products", {
+      const res = await fetch(`${window.location.origin}/api/products`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newProduct),
@@ -48,7 +48,7 @@ function Products() {
 
   const handleDelete = async (id) => {
     try {
-      const res = await fetch(`/api/products?id=${id}`, {
+      const res = await fetch(`${window.location.origin}/api/products?id=${id}`, {
         method: "DELETE",
       });
 
@@ -66,7 +66,7 @@ function Products() {
     try {
       const updatedProduct = { ...values, id: editingKey };
 
-      const res = await fetch("/api/products", {
+      const res = await fetch(`${window.location.origin}/api/products`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updatedProduct),

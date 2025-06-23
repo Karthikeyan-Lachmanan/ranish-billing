@@ -56,7 +56,7 @@ function Invoice() {
   useEffect(() => {
     const fetchProducts = async () => {
       try {
-        const res = await fetch("/products");
+        const res = await fetch(`${window.location.origin}/api/products`);
         const data = await res.json();
         setProducts(data);
       } catch (err) {
