@@ -248,7 +248,19 @@ function Invoice() {
     doc.setFontSize(8);
     doc.text("This is a Computer Generated Invoice", 14, y);
   
-    doc.save("invoice.pdf");
+    try {
+      doc.save("invoice.pdf");
+    } catch (err) {
+      // Fallback for mobile
+      const blob = doc.output("blob");
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = "invoice.pdf";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
   };
   
   
