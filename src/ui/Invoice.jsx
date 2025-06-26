@@ -87,47 +87,184 @@ function Invoice() {
   };
 
   const downloadPDF = () => {
-    const docPDF = new jsPDF();
-    docPDF.setFontSize(12);
-    docPDF.text(`Invoice Number: ${invoiceNo}`, 14, 20);
-    docPDF.text(`Date: ${date}`, 14, 30);
-
-    docPDF.text(`From: ${company.name}`, 14, 40);
-    docPDF.text(`${company.address}`, 14, 45);
-    docPDF.text(`GSTIN: ${company.gstin}`, 14, 50);
-    docPDF.text(`State: ${company.state}`, 14, 55);
-    docPDF.text(`Email: ${company.email}`, 14, 60);
-
-    docPDF.text(`To: ${buyer.name}`, 14, 70);
-    docPDF.text(`${buyer.address}`, 14, 75);
-    docPDF.text(`GSTIN: ${buyer.gstin}`, 14, 80);
-    docPDF.text(`State: ${buyer.state}`, 14, 85);
-    docPDF.text(`Email: ${buyer.email}`, 14, 90);
-
-    const tableData = selected.map((item, index) => [
-      index + 1,
-      item.name,
-      Number(item.price).toFixed(2),
-      item.quantity,
-      (Number(item.price) * item.quantity).toFixed(2),
+    if (selected.length === 0) {
+      alert("Please select at least one product before downloading.");
+      return;
+    }
+  
+    const doc = new jsPDF();
+  
+    const topMargin = 20;
+    const bottomMargin = 20;
+    const pageHeight = doc.internal.pageSize.height;
+    let y = topMargin;
+  
+    const ensureSpace = (neededSpace) => {
+      if (y + neededSpace > pageHeight - bottomMargin) {
+        doc.addPage();
+        y = topMargin;
+      }
+    };
+  
+    const rows = selected.map((p, i) => [
+      i + 1,
+      p.name,
+      p.hsnCode || "21050000",
+      p.quantity,
+      Number(p.price).toFixed(2),
+      (p.price * p.quantity).toFixed(2),
     ]);
-
-    autoTable(docPDF, {
-      head: [["#", "Product", "Price", "Quantity", "Total"]],
-      body: tableData,
-      startY: 100,
+  
+    const subtotal = rows.reduce((sum, row) => sum + parseFloat(row[5]), 0);
+    const gstAmount = gst ? subtotal * 0.18 : 0;
+    const total = subtotal + gstAmount;
+  
+    // Header
+    doc.setFontSize(14);
+    doc.text(company.name, 14, y);
+    y += 6;
+    doc.setFontSize(10);
+    doc.text(company.address, 14, y);
+    y += 5;
+    if (company.gstin) { doc.text(`GSTIN: ${company.gstin}`, 14, y); y += 5; }
+    if (company.state) { doc.text(`State: ${company.state}`, 14, y); y += 5; }
+    if (company.email) { doc.text(`Email: ${company.email}`, 14, y); y += 5; }
+  
+    doc.rect(140, topMargin, 60, 25);
+    doc.text("Invoice No.: " + invoiceNo, 142, topMargin + 8);
+    doc.text("Date: " + date, 142, topMargin + 16);
+  
+    doc.line(14, y, 200, y);
+    y += 7;
+  
+    // Buyer Details
+    ensureSpace(30);
+    doc.setFontSize(12);
+    doc.text("Buyer Details:", 14, y);
+    y += 5;
+    doc.setFontSize(10);
+    doc.text(buyer.name, 14, y);
+    y += 5;
+    doc.text(buyer.address, 14, y);
+    y += 5;
+    if (buyer.gstin) { doc.text(`GSTIN: ${buyer.gstin}`, 14, y); y += 5; }
+    if (buyer.state) { doc.text(`State: ${buyer.state}`, 14, y); y += 5; }
+    if (buyer.email) { doc.text(`Email: ${buyer.email}`, 14, y); y += 5; }
+    
+    // Product Table
+    ensureSpace(50);
+    autoTable(doc, {
+      startY: y,
+      theme: "grid",
+      head: [["S.No", "Description of Goods", "HSN/SAC", "Quantity", "Rate", "Amount"]],
+      columnStyles: { 0: { halign: "center" }, 3: { halign: "center" }, 4: { halign: "right" }, 5: { halign: "right" } },
+      styles: { fontSize: 8, cellPadding: 1 },
+      body: rows,
     });
-
-    let finalAmount = selected.reduce(
-      (sum, p) => sum + p.price * p.quantity,
-      0
-    );
-    if (gst) finalAmount *= 1.18;
-
-    docPDF.text(`Grand Total: ₹${finalAmount.toFixed(2)}`, 14, docPDF.lastAutoTable.finalY + 10);
-    docPDF.text(`${numberToWords(finalAmount)}`, 14, docPDF.lastAutoTable.finalY + 20);
-
-    docPDF.save(`Invoice_${invoiceNo}.pdf`);
+  
+    y = doc.lastAutoTable ? doc.lastAutoTable.finalY + 10 : y + 40;
+  
+    doc.setFontSize(10);
+    const leftX = 14;
+    const rightX = 110;
+  
+    // Calculate left section: Total Amount in Words
+    const totalAmountInWords = numberToWords(total);
+    const wordsLines = doc.splitTextToSize(totalAmountInWords, 80); // wrap if long text
+  
+    // Calculate right section: GST summary
+    const gstLines = gst ? [
+      ["Output CGST 9%", (gstAmount / 2).toFixed(2)],
+      ["Output SGST 9%", (gstAmount / 2).toFixed(2)],
+      ["Total Amount", total.toFixed(2)]
+    ] : [["Total Amount", total.toFixed(2)]];
+  
+    // Calculate dynamic height
+    const linesCount = Math.max(wordsLines.length, gstLines.length);
+    ensureSpace(linesCount * 6 + 20);
+  
+    // Render left side (Total Amount in Words)
+    doc.setFont(undefined, "bold");
+    doc.text("Total Amount (In Words):", leftX, y);
+    doc.setFont(undefined, "normal");
+    wordsLines.forEach((line, index) => {
+      doc.text(line, leftX, y + 6 + (index * 6));
+    });
+  
+    // Render right side (GST Summary)
+    gstLines.forEach(([label, value], index) => {
+      doc.text(label + ":", rightX, y + (index * 6));
+      doc.text(value, rightX + 50, y + (index * 6), { align: "right" });
+    });
+  
+    y += linesCount * 6 + 10;
+  
+    // GST Tax Table (if GST applied)
+    if (gst) {
+      ensureSpace(50);
+      autoTable(doc, {
+        startY: y,
+        margin: { left: 14 },
+        tableWidth: 180,
+        theme: "grid",
+        head: [["HSN/SAC", "Taxable Value", "CGST", "CGST Amt", "SGST", "SGST Amt", "Total Tax"]],
+        body: [[
+          "21050000",
+          subtotal.toFixed(2),
+          "9%",
+          (gstAmount / 2).toFixed(2),
+          "9%",
+          (gstAmount / 2).toFixed(2),
+          gstAmount.toFixed(2),
+        ]],
+        styles: { fontSize: 8, cellPadding: 1 },
+        columnStyles: { 2: { halign: "center" }, 4: { halign: "center" } },
+      });
+  
+      y = doc.lastAutoTable ? doc.lastAutoTable.finalY + 4 : y + 20;
+  
+      ensureSpace(10);
+      doc.setFontSize(6);
+      doc.text(`GST Amount in Words: ${numberToWords(gstAmount)}`, 14, y);
+      doc.setFontSize(10);
+      y += 8;
+    }
+  
+    // Declaration
+    ensureSpace(30);
+    doc.setFont(undefined, "bold");
+    doc.text("Declaration", 14, y);
+    y += 5;
+    doc.setFont(undefined, "normal");
+    doc.text("We declare that this invoice reflects the actual price of the goods described and that all particulars are true and correct.", 14, y);
+    y += 15;
+  
+    // Signature
+    ensureSpace(20);
+    doc.setFont(undefined, "bold");
+    doc.text(`for ${company.name}`, 200, y, { align: "right" });
+    y += 4;
+    doc.setFont(undefined, "normal");
+    doc.text("Authorised Signatory", 200, y, { align: "right" });
+    y += 6;
+  
+    // Footer
+    ensureSpace(10);
+    doc.setFontSize(8);
+    doc.text("This is a Computer Generated Invoice", 14, y);
+  
+    try {
+      doc.save("invoice.pdf");
+    } catch (err) {
+      const blob = doc.output("blob");
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = "invoice.pdf";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
   };
 
   const columns = [
