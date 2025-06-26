@@ -107,9 +107,9 @@ function Invoice() {
     const tableData = selected.map((item, index) => [
       index + 1,
       item.name,
-      item.price.toFixed(2),
+      Number(item.price).toFixed(2),
       item.quantity,
-      (item.price * item.quantity).toFixed(2),
+      (Number(item.price) * item.quantity).toFixed(2),
     ]);
 
     autoTable(docPDF, {
