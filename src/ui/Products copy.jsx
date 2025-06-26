@@ -16,7 +16,6 @@ function Products() {
   const [editingKey, setEditingKey] = useState(null);
   const [editingForm] = Form.useForm();
 
-  // ✅ Correct way: pass db as the first argument
   const productsCollection = collection(db, "products");
 
   const fetchProducts = async () => {
@@ -51,7 +50,7 @@ function Products() {
 
   const handleDelete = async (id) => {
     try {
-      await deleteDoc(doc(db, "products", id)); // ✅ Correct doc reference
+      await deleteDoc(doc(db, "products", id));
       message.success("Product deleted");
       fetchProducts();
     } catch (error) {
@@ -62,7 +61,7 @@ function Products() {
 
   const handleEditSave = async (values) => {
     try {
-      const productRef = doc(db, "products", editingKey); // ✅ Correct doc reference
+      const productRef = doc(db, "products", editingKey);
       await updateDoc(productRef, values);
       message.success("Product updated");
       setEditingKey(null);
