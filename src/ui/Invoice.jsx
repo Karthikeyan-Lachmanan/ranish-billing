@@ -48,16 +48,27 @@ function Invoice() {
   const [products, setProducts] = useState([]);
   const [selected, setSelected] = useState([]);
   const [gst, setGst] = useState(false);
-  const [invoiceNo] = useState(`INV${Date.now().toString().slice(-4)}`);
+  const [invoiceNo, setInvoiceNo] = useState("");
   const [date] = useState(new Date().toLocaleDateString("en-GB"));
+  const [customers, setCustomers] = useState([]);
+  const [orderNo, setOrderNo] = useState("");
+  const [salesperson, setSalesperson] = useState({});
+  const [salespersons, setSalespersons] = useState([]);
 
-  const [company, setCompany] = useState({ name: "", address: "", gstin: "", state: "", email: "" });
+  const [company, setCompany] = useState({
+    name: "Sri Venkateshwara Dairy Foods",
+    address: "OLD NO32/iD1, New No 18, Amudurmedu, Soorancheri post, Avadi, Chennai - 600072",
+    fssai: "12421023001134",
+    gstin: "33IKAP6023R1ZL",
+    state: "Tamilnadu",
+    phone: "9489881484",
+  });
   const [buyer, setBuyer] = useState({ name: "", address: "", gstin: "", state: "", email: "" });
 
   useEffect(() => {
     const fetchProducts = async () => {
       try {
-        const snapshot = await getDocs(collection(db, "products")); // ✅ Correct collection reference
+        const snapshot = await getDocs(collection(db, "products"));
         const productList = snapshot.docs.map((doc) => ({
           id: doc.id,
           ...doc.data(),
@@ -68,7 +79,38 @@ function Invoice() {
         message.error("Failed to load products");
       }
     };
+
+    const fetchCustomers = async () => {
+      try {
+        const snapshot = await getDocs(collection(db, "customers"));
+        const customerList = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+        setCustomers(customerList);
+      } catch (err) {
+        console.error("Failed to load customers:", err);
+        message.error("Failed to load customers");
+      }
+    };
+
+    const fetchSalespersons = async () => {
+      try {
+        const snapshot = await getDocs(collection(db, "salesperson"));
+        const salespersonList = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+        setSalespersons(salespersonList);
+      } catch (err) {
+        console.error("Failed to load salespersons:", err);
+        message.error("Failed to load salespersons");
+      }
+    };
+
+    fetchSalespersons();
     fetchProducts();
+    fetchCustomers();
   }, []);
 
   const addProduct = (productId) => {
@@ -85,7 +127,7 @@ function Invoice() {
   const removeProduct = (id) => {
     setSelected((prev) => prev.filter((item) => item.id !== id));
   };
-
+  
   const downloadPDF = () => {
     if (selected.length === 0) {
       alert("Please select at least one product before downloading.");
@@ -93,23 +135,14 @@ function Invoice() {
     }
   
     const doc = new jsPDF();
-  
-    const topMargin = 20;
-    const bottomMargin = 20;
     const pageHeight = doc.internal.pageSize.height;
-    let y = topMargin;
-  
-    const ensureSpace = (neededSpace) => {
-      if (y + neededSpace > pageHeight - bottomMargin) {
-        doc.addPage();
-        y = topMargin;
-      }
-    };
+    let pageNumber = 1;
   
     const rows = selected.map((p, i) => [
       i + 1,
       p.name,
       p.hsnCode || "21050000",
+      p.mrp,
       p.quantity,
       Number(p.price).toFixed(2),
       (p.price * p.quantity).toFixed(2),
@@ -118,94 +151,158 @@ function Invoice() {
     const subtotal = rows.reduce((sum, row) => sum + parseFloat(row[5]), 0);
     const gstAmount = gst ? subtotal * 0.18 : 0;
     const total = subtotal + gstAmount;
+    const roundedTotal = Math.round(total);
+    const roundOffAmount = (roundedTotal - total).toFixed(2);
   
-    // Header
-    doc.setFontSize(14);
-    doc.text(company.name, 14, y);
-    y += 6;
-    doc.setFontSize(10);
-    doc.text(company.address, 14, y);
-    y += 5;
-    if (company.gstin) { doc.text(`GSTIN: ${company.gstin}`, 14, y); y += 5; }
-    if (company.state) { doc.text(`State: ${company.state}`, 14, y); y += 5; }
-    if (company.email) { doc.text(`Email: ${company.email}`, 14, y); y += 5; }
+    const gstSummaryRows = gst
+      ? [
+          ["", { content: "Output CGST 9%", styles: { halign: "right", fontStyle: "bold" } }, "", "", "", "", { content: (gstAmount / 2).toFixed(2), styles: { halign: "right" } }],
+          ["", { content: "Output SGST 9%", styles: { halign: "right", fontStyle: "bold" } }, "", "", "", "", { content: (gstAmount / 2).toFixed(2), styles: { halign: "right" } }],
+        ]
+      : [];
   
-    doc.rect(140, topMargin, 60, 25);
-    doc.text("Invoice No.: " + invoiceNo, 142, topMargin + 8);
-    doc.text("Date: " + date, 142, topMargin + 16);
+    const roundOffRow = ["", { content: "Round Off", styles: { halign: "right", fontStyle: "bold" } }, "", "", "", "", { content: roundOffAmount, styles: { halign: "right" } }];
   
-    doc.line(14, y, 200, y);
-    y += 7;
+    const renderHeader = () => {
+      let headerY = 20;
   
-    // Buyer Details
-    ensureSpace(30);
-    doc.setFontSize(12);
-    doc.text("Buyer Details:", 14, y);
-    y += 5;
-    doc.setFontSize(10);
-    doc.text(buyer.name, 14, y);
-    y += 5;
-    doc.text(buyer.address, 14, y);
-    y += 5;
-    if (buyer.gstin) { doc.text(`GSTIN: ${buyer.gstin}`, 14, y); y += 5; }
-    if (buyer.state) { doc.text(`State: ${buyer.state}`, 14, y); y += 5; }
-    if (buyer.email) { doc.text(`Email: ${buyer.email}`, 14, y); y += 5; }
-    
-    // Product Table
-    ensureSpace(50);
-    autoTable(doc, {
-      startY: y,
-      theme: "grid",
-      head: [["S.No", "Description of Goods", "HSN/SAC", "Quantity", "Rate", "Amount"]],
-      columnStyles: { 0: { halign: "center" }, 3: { halign: "center" }, 4: { halign: "right" }, 5: { halign: "right" } },
-      styles: { fontSize: 8, cellPadding: 1 },
-      body: rows,
-    });
+      doc.setFontSize(16);
+      doc.setFont(undefined, "bold");
+      doc.text("Tax Invoice", 105, headerY, { align: "center" });
+      headerY += 10;
   
-    y = doc.lastAutoTable ? doc.lastAutoTable.finalY + 10 : y + 40;
+      doc.setFontSize(14);
+      doc.setFont(undefined, "normal");
+      doc.text(company.name, 14, headerY);
+      headerY += 6;
   
-    doc.setFontSize(10);
-    const leftX = 14;
-    const rightX = 110;
+      doc.setFontSize(10);
+      doc.text(company.address, 14, headerY);
+      headerY += 5;
+      if (company.fssai) { doc.text(`FSSAI No: ${company.fssai}`, 14, headerY); headerY += 5; }
+      if (company.gstin) { doc.text(`GSTIN: ${company.gstin}`, 14, headerY); headerY += 5; }
+      if (company.state) { doc.text(`State: ${company.state}`, 14, headerY); headerY += 5; }
+      if (company.email) { doc.text(`Phone: ${company.phone}`, 14, headerY); headerY += 5; }
   
-    // Calculate left section: Total Amount in Words
-    const totalAmountInWords = numberToWords(total);
-    const wordsLines = doc.splitTextToSize(totalAmountInWords, 80); // wrap if long text
+      doc.rect(160, 30, 40, 20);
+      doc.setFontSize(10);
+      doc.text("Invoice No.: " + invoiceNo, 162, 38);
+      doc.text("Date: " + date, 162, 46);
   
-    // Calculate right section: GST summary
-    const gstLines = gst ? [
-      ["Output CGST 9%", (gstAmount / 2).toFixed(2)],
-      ["Output SGST 9%", (gstAmount / 2).toFixed(2)],
-      ["Total Amount", total.toFixed(2)]
-    ] : [["Total Amount", total.toFixed(2)]];
+      doc.line(14, headerY, 200, headerY);
+      headerY += 7;
   
-    // Calculate dynamic height
-    const linesCount = Math.max(wordsLines.length, gstLines.length);
-    ensureSpace(linesCount * 6 + 20);
+      doc.setFontSize(12);
+      doc.text("Buyer Details:", 14, headerY);
+      headerY += 5;
   
-    // Render left side (Total Amount in Words)
-    doc.setFont(undefined, "bold");
-    doc.text("Total Amount (In Words):", leftX, y);
-    doc.setFont(undefined, "normal");
-    wordsLines.forEach((line, index) => {
-      doc.text(line, leftX, y + 6 + (index * 6));
-    });
+      doc.setFontSize(10);
+      doc.text(buyer.name, 14, headerY);
+      headerY += 5;
   
-    // Render right side (GST Summary)
-    gstLines.forEach(([label, value], index) => {
-      doc.text(label + ":", rightX, y + (index * 6));
-      doc.text(value, rightX + 50, y + (index * 6), { align: "right" });
-    });
+      doc.text(buyer.address, 14, headerY);
+      headerY += 5;
   
-    y += linesCount * 6 + 10;
+      if (buyer.gstin) { doc.text(`GSTIN: ${buyer.gstin}`, 14, headerY); headerY += 5; }
+      if (buyer.state) { doc.text(`State: ${buyer.state}`, 14, headerY); headerY += 5; }
+      if (buyer.email) { doc.text(`Email: ${buyer.email}`, 14, headerY); headerY += 5; }
   
-    // GST Tax Table (if GST applied)
-    if (gst) {
-      ensureSpace(50);
+      let salespersonStartY = 64;
+      doc.setFontSize(12);
+      doc.text("Order No.: " + orderNo, 160, salespersonStartY);
+      salespersonStartY += 5;
+  
+      doc.setFontSize(10);
+      doc.text(`Sales Person: ${salesperson?.name || ""}`, 160, salespersonStartY);
+      salespersonStartY += 5;
+  
+      doc.text(`Phone: ${salesperson?.phone || ""}`, 160, salespersonStartY);
+  
+      return Math.max(headerY, salespersonStartY);
+    };
+  
+    const rowHeight = 8;
+    const headerHeight = 80;
+    const footerReserved = 80;
+    const usableHeight = pageHeight - headerHeight - footerReserved;
+    const maxRowsFirstPage = Math.floor(usableHeight / rowHeight);
+    const maxRowsOtherPages = maxRowsFirstPage;
+  
+    const totalRows = [...rows, ...gstSummaryRows, roundOffRow];
+    let currentIndex = 0;
+    let finalY = 0;
+  
+    while (currentIndex < totalRows.length || currentIndex === 0) {
+      let headerY = renderHeader();
+      let remainingRows = totalRows.length - currentIndex;
+      let maxRows = pageNumber === 1 ? maxRowsFirstPage : maxRowsOtherPages;
+      let displayRows = remainingRows > maxRows ? maxRows : remainingRows;
+  
+      let pageRows = totalRows.slice(currentIndex, currentIndex + displayRows);
+  
+      if (currentIndex + displayRows >= totalRows.length) {
+        let fillerRows = Array.from({ length: maxRows - pageRows.length - 1 }, () => ["", "", "", "", "", ""]);
+        pageRows = [...pageRows, ...fillerRows];
+        pageRows.push(["", { content: "Total Amount", styles: { halign: "right", fontStyle: "bold" } }, "", "", "", "", { content: total.toFixed(2), styles: { halign: "right", fontStyle: "bold" } }]);
+      } else if (pageRows.length < maxRows) {
+        let fillerRows = Array.from({ length: maxRows - pageRows.length }, () => ["", "", "", "", "", ""]);
+        pageRows = [...pageRows, ...fillerRows];
+      }
+  
       autoTable(doc, {
-        startY: y,
+        startY: headerY,
+        head: [["S.No", "Description of Goods", "HSN/SAC", "MRP", "Quantity", "Rate", "Amount"]],
+        body: pageRows,
+        theme: 'grid',
+        styles: { fontSize: 8, cellPadding: 1 },
         margin: { left: 14 },
-        tableWidth: 180,
+        columnStyles: { 0: { halign: "center" }, 4: { halign: "center" }, 5: { halign: "right" }, 6: { halign: "right" } },
+        didDrawPage: () => {
+          doc.setFontSize(8);
+          doc.text(`Page ${pageNumber}`, 200, pageHeight - 10, { align: "right" });
+        }
+      });
+  
+      finalY = doc.lastAutoTable.finalY + 10;
+      currentIndex += maxRows;
+  
+      if (currentIndex < totalRows.length) {
+        doc.addPage();
+        pageNumber++;
+      }
+    }
+  
+    doc.setFont(undefined, "bold");
+    doc.text("Total Amount (In Words):", 14, finalY);
+    doc.setFont(undefined, "normal");
+  
+    const totalAmountInWords = numberToWords(total);
+    const wordsLines = doc.splitTextToSize(totalAmountInWords, 80);
+  
+    wordsLines.forEach((line, index) => {
+      doc.text(line, 14, finalY + 6 + (index * 6));
+    });
+  
+    doc.setFont(undefined, "bold");
+    doc.text("Account Details:", 120, finalY);
+  
+    doc.setFont(undefined, "normal");
+    doc.text("Account Name: Sri Venkateshwara Dairy Foods", 120, finalY + 6);
+    doc.text("Account No: 1783135000005075", 120, finalY + 12);
+    doc.text("Branch: NEMILICHERRY", 120, finalY + 18);
+    doc.text("IFSC: KVBL0001783", 120, finalY + 24);
+    doc.text("UPI: 9489881484", 120, finalY + 30);
+  
+    const wordsBlockHeight = wordsLines.length * 6 + 10;
+    const accountBlockHeight = 30 + 10;
+  
+    let nextSectionY = finalY + Math.max(wordsBlockHeight, accountBlockHeight) + 10;
+  
+    if (gst) {
+      autoTable(doc, {
+        startY: finalY + 14,
+        margin: { left: 14 },
+        tableWidth: 90,
         theme: "grid",
         head: [["HSN/SAC", "Taxable Value", "CGST", "CGST Amt", "SGST", "SGST Amt", "Total Tax"]],
         body: [[
@@ -221,37 +318,32 @@ function Invoice() {
         columnStyles: { 2: { halign: "center" }, 4: { halign: "center" } },
       });
   
-      y = doc.lastAutoTable ? doc.lastAutoTable.finalY + 4 : y + 20;
+      nextSectionY = doc.lastAutoTable.finalY + 4;
   
-      ensureSpace(10);
       doc.setFontSize(6);
-      doc.text(`GST Amount in Words: ${numberToWords(gstAmount)}`, 14, y);
+      doc.text(`GST Amount in Words: ${numberToWords(gstAmount)}`, 14, nextSectionY);
       doc.setFontSize(10);
-      y += 8;
+      nextSectionY += 8;
     }
   
-    // Declaration
-    ensureSpace(30);
     doc.setFont(undefined, "bold");
-    doc.text("Declaration", 14, y);
-    y += 5;
-    doc.setFont(undefined, "normal");
-    doc.text("We declare that this invoice reflects the actual price of the goods described and that all particulars are true and correct.", 14, y);
-    y += 15;
+    doc.text("Declaration", 14, nextSectionY);
+    nextSectionY += 5;
   
-    // Signature
-    ensureSpace(20);
+    doc.setFont(undefined, "normal");
+    doc.text("We declare that this invoice reflects the actual price of the goods described and that all particulars are true and correct.", 14, nextSectionY);
+    nextSectionY += 15;
+  
     doc.setFont(undefined, "bold");
-    doc.text(`for ${company.name}`, 200, y, { align: "right" });
-    y += 4;
-    doc.setFont(undefined, "normal");
-    doc.text("Authorised Signatory", 200, y, { align: "right" });
-    y += 6;
+    doc.text(`for ${company.name}`, 200, nextSectionY, { align: "right" });
+    nextSectionY += 4;
   
-    // Footer
-    ensureSpace(10);
+    doc.setFont(undefined, "normal");
+    doc.text("Authorised Signatory", 200, nextSectionY, { align: "right" });
+    nextSectionY += 6;
+  
     doc.setFontSize(8);
-    doc.text("This is a Computer Generated Invoice", 14, y);
+    doc.text("This is a Computer Generated Invoice", 14, nextSectionY);
   
     try {
       doc.save("invoice.pdf");
@@ -266,7 +358,9 @@ function Invoice() {
       document.body.removeChild(a);
     }
   };
-
+  
+  
+  
   const columns = [
     { title: "Product", dataIndex: "name" },
     { title: "Price", dataIndex: "price" },
@@ -313,14 +407,17 @@ function Invoice() {
             <Form.Item label="Address">
               <Input value={company.address} onChange={(e) => setCompany({ ...company, address: e.target.value })} />
             </Form.Item>
+            <Form.Item label="FSSAI No">
+              <Input value={company.fssai} onChange={(e) => setCompany({ ...company, fssai: e.target.value })} />
+            </Form.Item>
             <Form.Item label="GSTIN">
               <Input value={company.gstin} onChange={(e) => setCompany({ ...company, gstin: e.target.value })} />
             </Form.Item>
             <Form.Item label="State">
               <Input value={company.state} onChange={(e) => setCompany({ ...company, state: e.target.value })} />
             </Form.Item>
-            <Form.Item label="Email">
-              <Input value={company.email} onChange={(e) => setCompany({ ...company, email: e.target.value })} />
+            <Form.Item label="Phone">
+              <Input value={company.phone} onChange={(e) => setCompany({ ...company, phone: e.target.value })} />
             </Form.Item>
           </Col>
 
@@ -345,13 +442,84 @@ function Invoice() {
         </Row>
       </Form>
 
-      <Select style={{ width: 300 }} placeholder="Select Product" onSelect={addProduct}>
-        {products.map((p) => (
-          <Option key={p.id} value={p.id}>
-            {p.name} - ₹{p.price}
-          </Option>
-        ))}
-      </Select>
+      <Form layout="inline" style={{ marginBottom: 20 }}>
+        <Form.Item label="Invoice No.">
+          <Input
+            placeholder="Enter Invoice Number"
+            value={invoiceNo}
+            onChange={(e) => setInvoiceNo(e.target.value)}
+          />
+        </Form.Item>
+
+        <Form.Item label="Order No.">
+          <Input
+            placeholder="Enter Order Number"
+            value={orderNo}
+            onChange={(e) => setOrderNo(e.target.value)}
+          />
+        </Form.Item>
+
+        <Form.Item label="Salesperson">
+          <Select
+            showSearch
+            style={{ width: 200 }}
+            placeholder="Select Salesperson"
+            optionFilterProp="label"
+            onSelect={(value) => {
+              const sp = salespersons.find((s) => s.id === value);
+              setSalesperson(sp);
+            }}
+            filterOption={(input, option) =>
+              (option?.label ?? "").toLowerCase().includes(input.toLowerCase())
+            }
+            options={salespersons.map((sp) => ({
+              label: sp.name,
+              value: sp.id,
+            }))}
+          />
+        </Form.Item>
+      </Form>
+
+      <Select
+        showSearch
+        style={{ width: 300, marginBottom: 20 }}
+        placeholder="Select Customer"
+        optionFilterProp="label"
+        onSelect={(customerId) => {
+          const selectedCustomer = customers.find((c) => c.id === customerId);
+          if (selectedCustomer) {
+            setBuyer({
+              name: selectedCustomer.name,
+              address: selectedCustomer.address,
+              gstin: selectedCustomer.gstin,
+              state: selectedCustomer.state,
+              email: selectedCustomer.contact,
+            });
+          }
+        }}
+        filterOption={(input, option) =>
+          (option?.label ?? "").toLowerCase().includes(input.toLowerCase())
+        }
+        options={customers.map((c) => ({
+          label: `${c.name} - ${c.contact}`,
+          value: c.id,
+        }))}
+      />
+
+      <Select
+        showSearch
+        style={{ width: 300 }}
+        placeholder="Select Product"
+        optionFilterProp="label"
+        onSelect={addProduct}
+        filterOption={(input, option) =>
+          (option?.label ?? "").toLowerCase().includes(input.toLowerCase())
+        }
+        options={products.map((p) => ({
+          label: `${p.name} - ₹${p.price}`,
+          value: p.id,
+        }))}
+      />
 
       <div style={{ marginTop: 20, marginBottom: 10 }}>
         <Row gutter={16} align="middle">

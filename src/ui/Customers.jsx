@@ -10,50 +10,49 @@ import {
   deleteDoc,
 } from "firebase/firestore";
 
-function Products() {
+function Customers() {
   const [form] = Form.useForm();
-  const [products, setProducts] = useState([]);
+  const [customers, setCustomers] = useState([]);
   const [editingKey, setEditingKey] = useState(null);
   const [editingForm] = Form.useForm();
 
-  // ✅ Correct way: pass db as the first argument
-  const productsCollection = collection(db, "products");
+  const customersCollection = collection(db, "customers");
 
-  const fetchProducts = async () => {
+  const fetchCustomers = async () => {
     try {
-      const snapshot = await getDocs(productsCollection);
-      const fetchedProducts = snapshot.docs.map((doc) => ({
+      const snapshot = await getDocs(customersCollection);
+      const fetchedCustomers = snapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
       }));
-      setProducts(fetchedProducts);
+      setCustomers(fetchedCustomers);
     } catch (err) {
       console.error("Fetch error:", err);
-      message.error("Failed to fetch products");
+      message.error("Failed to fetch customers");
     }
   };
 
   useEffect(() => {
-    fetchProducts();
+    fetchCustomers();
   }, []);
 
-  const handleAddProduct = async (values) => {
+  const handleAddCustomer = async (values) => {
     try {
-      await addDoc(productsCollection, values);
-      message.success("Product added!");
+      await addDoc(customersCollection, values);
+      message.success("Customer added!");
       form.resetFields();
-      fetchProducts();
+      fetchCustomers();
     } catch (error) {
       console.error("Add error:", error);
-      message.error("Failed to add product");
+      message.error("Failed to add customer");
     }
   };
 
   const handleDelete = async (id) => {
     try {
-      await deleteDoc(doc(db, "products", id));
-      message.success("Product deleted");
-      fetchProducts();
+      await deleteDoc(doc(db, "customers", id));
+      message.success("Customer deleted");
+      fetchCustomers();
     } catch (error) {
       console.error("Delete error:", error);
       message.error("Failed to delete");
@@ -62,10 +61,11 @@ function Products() {
 
   const handleEditSave = async (values) => {
     try {
-      const productRef = doc(db, "products", editingKey);
-      message.success("Product updated");
+      const customerRef = doc(db, "customers", editingKey);
+      await updateDoc(customerRef, values);
+      message.success("Customer updated");
       setEditingKey(null);
-      fetchProducts();
+      fetchCustomers();
     } catch (error) {
       console.error("Update error:", error);
       message.error("Failed to update");
@@ -76,10 +76,10 @@ function Products() {
     setEditingKey(record.id);
     editingForm.setFieldsValue({
       name: record.name,
-      price: record.price,
-      perBox: record.perBox,
-      mrp: record.mrp,
-      hsnCode: record.hsnCode,
+      address: record.address,
+      gstin: record.gstin,
+      state: record.state,
+      contact: record.contact,
     });
   };
 
@@ -89,7 +89,7 @@ function Products() {
 
   const columns = [
     {
-      title: "Name",
+      title: "Customer Name",
       dataIndex: "name",
       render: (text, record) => {
         if (editingKey === record.id) {
@@ -103,13 +103,13 @@ function Products() {
       },
     },
     {
-      title: "Price (₹)",
-      dataIndex: "price",
+      title: "Address",
+      dataIndex: "address",
       render: (text, record) => {
         if (editingKey === record.id) {
           return (
-            <Form.Item name="price" style={{ margin: 0 }} rules={[{ required: true }]}>
-              <Input type="number" />
+            <Form.Item name="address" style={{ margin: 0 }} rules={[{ required: true }]}>
+              <Input />
             </Form.Item>
           );
         }
@@ -117,13 +117,13 @@ function Products() {
       },
     },
     {
-      title: "Per Box",
-      dataIndex: "perBox",
+      title: "GSTIN",
+      dataIndex: "gstin",
       render: (text, record) => {
         if (editingKey === record.id) {
           return (
-            <Form.Item name="perBox" style={{ margin: 0 }} rules={[{ required: true }]}>
-              <Input type="number" />
+            <Form.Item name="gstin" style={{ margin: 0 }} rules={[{ required: true }]}>
+              <Input />
             </Form.Item>
           );
         }
@@ -131,13 +131,13 @@ function Products() {
       },
     },
     {
-      title: "MRP (₹)",
-      dataIndex: "mrp",
+      title: "State",
+      dataIndex: "state",
       render: (text, record) => {
         if (editingKey === record.id) {
           return (
-            <Form.Item name="mrp" style={{ margin: 0 }} rules={[{ required: true }]}>
-              <Input type="number" />
+            <Form.Item name="state" style={{ margin: 0 }} rules={[{ required: true }]}>
+              <Input />
             </Form.Item>
           );
         }
@@ -145,12 +145,12 @@ function Products() {
       },
     },
     {
-      title: "HSN Code",
-      dataIndex: "hsnCode",
+      title: "Email / Phone",
+      dataIndex: "contact",
       render: (text, record) => {
         if (editingKey === record.id) {
           return (
-            <Form.Item name="hsnCode" style={{ margin: 0 }} rules={[{ required: true }]}>
+            <Form.Item name="contact" style={{ margin: 0 }} rules={[{ required: true }]}>
               <Input />
             </Form.Item>
           );
@@ -179,7 +179,7 @@ function Products() {
             <Button type="link" onClick={() => startEdit(record)}>
               Edit
             </Button>
-            <Popconfirm title="Delete this product?" onConfirm={() => handleDelete(record.id)}>
+            <Popconfirm title="Delete this customer?" onConfirm={() => handleDelete(record.id)}>
               <Button type="link" danger>
                 Delete
               </Button>
@@ -192,31 +192,31 @@ function Products() {
 
   return (
     <div style={{ maxWidth: 800, margin: "2rem auto" }}>
-      <Form form={form} layout="vertical" onFinish={handleAddProduct}>
-        <Form.Item label="Product Name" name="name" rules={[{ required: true }]}>
+      <Form form={form} layout="vertical" onFinish={handleAddCustomer}>
+        <Form.Item label="Customer Name" name="name" rules={[{ required: true }]}>
           <Input />
         </Form.Item>
-        <Form.Item label="Price" name="price" rules={[{ required: true }]}>
-          <Input type="number" />
+        <Form.Item label="Address" name="address" rules={[{ required: true }]}>
+          <Input />
         </Form.Item>
-        <Form.Item label="Per Box" name="perBox" rules={[{ required: true }]}>
-          <Input type="number" />
+        <Form.Item label="GSTIN" name="gstin" rules={[{ required: true }]}>
+          <Input />
         </Form.Item>
-        <Form.Item label="MRP" name="mrp" rules={[{ required: true }]}>
-          <Input type="number" />
+        <Form.Item label="State" name="state" rules={[{ required: true }]}>
+          <Input />
         </Form.Item>
-        <Form.Item label="HSN Code" name="hsnCode" rules={[{ required: true }]}>
+        <Form.Item label="Email / Phone" name="contact" rules={[{ required: true }]}>
           <Input />
         </Form.Item>
         <Button type="primary" htmlType="submit">
-          Add Product
+          Add Customer
         </Button>
       </Form>
 
-      <h3 style={{ marginTop: "2rem" }}>All Products</h3>
+      <h3 style={{ marginTop: "2rem" }}>All Customers</h3>
       <Form form={editingForm} onFinish={handleEditSave}>
         <Table
-          dataSource={products}
+          dataSource={customers}
           columns={columns}
           rowKey="id"
           pagination={false}
@@ -226,4 +226,4 @@ function Products() {
   );
 }
 
-export default Products;
+export default Customers;

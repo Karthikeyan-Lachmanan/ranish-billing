@@ -6,6 +6,8 @@ export default function Home() {
       <h1>Welcome to Billing App</h1>
       <Link href="/products">Go to Products</Link>
       <Link href="/invoice">Go to invoice</Link>
+      <Link href="/salesperson">Go to Sales Person</Link>
+      <Link href="/customers">Go to Customers</Link>
     </div>
   );
 }
