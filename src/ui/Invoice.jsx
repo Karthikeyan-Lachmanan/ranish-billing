@@ -182,7 +182,7 @@ function Invoice() {
       if (company.fssai) { doc.text(`FSSAI No: ${company.fssai}`, 14, headerY); headerY += 5; }
       if (company.gstin) { doc.text(`GSTIN: ${company.gstin}`, 14, headerY); headerY += 5; }
       if (company.state) { doc.text(`State: ${company.state}`, 14, headerY); headerY += 5; }
-      if (company.email) { doc.text(`Phone: ${company.phone}`, 14, headerY); headerY += 5; }
+      if (company.phone) { doc.text(`Phone: ${company.phone}`, 14, headerY); headerY += 5; }
   
       doc.rect(160, 30, 40, 20);
       doc.setFontSize(10);
@@ -205,16 +205,16 @@ function Invoice() {
   
       if (buyer.gstin) { doc.text(`GSTIN: ${buyer.gstin}`, 14, headerY); headerY += 5; }
       if (buyer.state) { doc.text(`State: ${buyer.state}`, 14, headerY); headerY += 5; }
-      if (buyer.email) { doc.text(`Email: ${buyer.email}`, 14, headerY); headerY += 5; }
+      if (buyer.email) { doc.text(`Phone: ${buyer.email}`, 14, headerY); headerY += 5; }
   
       let salespersonStartY = 64;
       doc.setFontSize(12);
-      doc.text("Order No.: " + orderNo, 160, salespersonStartY);
-      salespersonStartY += 5;
+      doc.text("Order No.: " + orderNo, 160, salespersonStartY + 2);
+      salespersonStartY += 7;
   
       doc.setFontSize(10);
       doc.text(`Sales Person: ${salesperson?.name || ""}`, 160, salespersonStartY);
-      salespersonStartY += 5;
+      salespersonStartY += 6;
   
       doc.text(`Phone: ${salesperson?.phone || ""}`, 160, salespersonStartY);
   
@@ -243,7 +243,7 @@ function Invoice() {
       if (currentIndex + displayRows >= totalRows.length) {
         let fillerRows = Array.from({ length: maxRows - pageRows.length - 1 }, () => ["", "", "", "", "", ""]);
         pageRows = [...pageRows, ...fillerRows];
-        pageRows.push(["", { content: "Total Amount", styles: { halign: "right", fontStyle: "bold" } }, "", "", "", "", { content: total.toFixed(2), styles: { halign: "right", fontStyle: "bold" } }]);
+        pageRows.push(["", { content: "Total Amount", styles: { halign: "right", fontStyle: "bold" } }, "", "", "", "", { content: total.toFixed(0), styles: { halign: "right", fontStyle: "bold" } }]);
       } else if (pageRows.length < maxRows) {
         let fillerRows = Array.from({ length: maxRows - pageRows.length }, () => ["", "", "", "", "", ""]);
         pageRows = [...pageRows, ...fillerRows];

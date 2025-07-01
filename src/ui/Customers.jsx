@@ -122,7 +122,7 @@ function Customers() {
       render: (text, record) => {
         if (editingKey === record.id) {
           return (
-            <Form.Item name="gstin" style={{ margin: 0 }} rules={[{ required: true }]}>
+            <Form.Item name="gstin" style={{ margin: 0 }}>
               <Input />
             </Form.Item>
           );
@@ -199,7 +199,7 @@ function Customers() {
         <Form.Item label="Address" name="address" rules={[{ required: true }]}>
           <Input />
         </Form.Item>
-        <Form.Item label="GSTIN" name="gstin" rules={[{ required: true }]}>
+        <Form.Item label="GSTIN" name="gstin">
           <Input />
         </Form.Item>
         <Form.Item label="State" name="state" rules={[{ required: true }]}>
