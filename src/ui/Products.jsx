@@ -63,6 +63,7 @@ function Products() {
   const handleEditSave = async (values) => {
     try {
       const productRef = doc(db, "products", editingKey);
+      await updateDoc(productRef, values); // ✅ You missed this line
       message.success("Product updated");
       setEditingKey(null);
       fetchProducts();
