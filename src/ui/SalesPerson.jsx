@@ -50,7 +50,7 @@ function SalesPerson() {
 
   const handleDelete = async (id) => {
     try {
-      await deleteDoc(doc(db, "salespersons", id));
+      await deleteDoc(doc(db, "salesperson", id));
       message.success("Sales person deleted");
       fetchSalesPersons();
     } catch (error) {
@@ -61,7 +61,7 @@ function SalesPerson() {
 
   const handleEditSave = async (values) => {
     try {
-      const salesPersonRef = doc(db, "salespersons", editingKey);
+      const salesPersonRef = doc(db, "salesperson", editingKey);
       await updateDoc(salesPersonRef, values);
       message.success("Sales person updated");
       setEditingKey(null);

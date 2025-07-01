@@ -37,8 +37,12 @@ function Customers() {
   }, []);
 
   const handleAddCustomer = async (values) => {
+    const cleanedValues = Object.fromEntries(
+      Object.entries(values).filter(([_, value]) => value !== undefined)
+    );
+  
     try {
-      await addDoc(customersCollection, values);
+      await addDoc(customersCollection, cleanedValues);
       message.success("Customer added!");
       form.resetFields();
       fetchCustomers();
