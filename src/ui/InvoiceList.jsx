@@ -3,7 +3,7 @@ import { collection, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase"; // Adjust the path if needed
 import { Table, message } from "antd";
 
-export default function Invoices() {
+function InvoiceList() {
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -54,3 +54,5 @@ export default function Invoices() {
     </div>
   );
 }
+
+export default InvoiceList;
