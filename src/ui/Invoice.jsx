@@ -221,12 +221,12 @@ function Invoice() {
       return Math.max(headerY, salespersonStartY);
     };
   
-    const rowHeight = 8;
+    const rowHeight = 6.5;  // Reduced row height
     const headerHeight = 80;
-    const footerReserved = 80;
+    const footerReserved = 60; // Less footer space
+
     const usableHeight = pageHeight - headerHeight - footerReserved;
     const maxRowsFirstPage = Math.floor(usableHeight / rowHeight);
-    const maxRowsOtherPages = maxRowsFirstPage;
   
     const totalRows = [...rows, ...gstSummaryRows, roundOffRow];
     let currentIndex = 0;
@@ -241,13 +241,22 @@ function Invoice() {
       let pageRows = totalRows.slice(currentIndex, currentIndex + displayRows);
   
       if (currentIndex + displayRows >= totalRows.length) {
-        let fillerRows = Array.from({ length: maxRows - pageRows.length - 1 }, () => ["", "", "", "", "", ""]);
-        pageRows = [...pageRows, ...fillerRows];
-        pageRows.push(["", { content: "Total Amount", styles: { halign: "right", fontStyle: "bold" } }, "", "", "", "", { content: total.toFixed(0), styles: { halign: "right", fontStyle: "bold" } }]);
-      } else if (pageRows.length < maxRows) {
         let fillerRows = Array.from({ length: maxRows - pageRows.length }, () => ["", "", "", "", "", ""]);
         pageRows = [...pageRows, ...fillerRows];
-      }
+        
+        pageRows.push([
+          "",
+          { content: "Total Amount", styles: { halign: "right", fontStyle: "bold" } },
+          "",
+          "",
+          "",
+          "",
+          { content: total.toFixed(0), styles: { halign: "right", fontStyle: "bold" } }
+        ]);
+    } else if (pageRows.length < maxRows) {
+        let fillerRows = Array.from({ length: maxRows - pageRows.length }, () => ["", "", "", "", "", ""]);
+        pageRows = [...pageRows, ...fillerRows];
+    }
   
       autoTable(doc, {
         startY: headerY,
@@ -271,27 +280,29 @@ function Invoice() {
         pageNumber++;
       }
     }
-  
+    doc.setFontSize(8);
     doc.setFont(undefined, "bold");
-    doc.text("Total Amount (In Words):", 14, finalY);
+    doc.text("Total Amount (In Words):", 14, finalY - 4);
     doc.setFont(undefined, "normal");
   
     const totalAmountInWords = numberToWords(total);
     const wordsLines = doc.splitTextToSize(totalAmountInWords, 80);
   
     wordsLines.forEach((line, index) => {
-      doc.text(line, 14, finalY + 6 + (index * 6));
+      doc.text(line, 14, finalY + (index * 6));
     });
   
     doc.setFont(undefined, "bold");
-    doc.text("Account Details:", 120, finalY);
+    doc.setFontSize(8);
+    doc.text("Account Details:", 120, finalY + 2);
   
     doc.setFont(undefined, "normal");
+    
     doc.text("Account Name: Sri Venkateshwara Dairy Foods", 120, finalY + 6);
-    doc.text("Account No: 1783135000005075", 120, finalY + 12);
-    doc.text("Branch: NEMILICHERRY", 120, finalY + 18);
-    doc.text("IFSC: KVBL0001783", 120, finalY + 24);
-    doc.text("UPI: 9489881484", 120, finalY + 30);
+    doc.text("Account No: 1783135000005075", 120, finalY + 10);
+    doc.text("Branch: NEMILICHERRY", 120, finalY + 14);
+    doc.text("IFSC: KVBL0001783", 120, finalY + 18);
+    doc.text("UPI: 9489881484", 120, finalY + 22);
   
     const wordsBlockHeight = wordsLines.length * 6 + 10;
     const accountBlockHeight = 30 + 10;
@@ -300,7 +311,7 @@ function Invoice() {
   
     if (gst) {
       autoTable(doc, {
-        startY: finalY + 14,
+        startY: finalY + 2,
         margin: { left: 14 },
         tableWidth: 90,
         theme: "grid",
@@ -330,9 +341,10 @@ function Invoice() {
     doc.text("Declaration", 14, nextSectionY);
     nextSectionY += 5;
   
-    doc.setFont(undefined, "normal");
-    doc.text("We declare that this invoice reflects the actual price of the goods described and that all particulars are true and correct.", 14, nextSectionY);
-    nextSectionY += 15;
+    doc.setFont(undefined, "normal"); 
+    doc.text("We declare that this invoice reflects the actual price of ", 14, nextSectionY);
+    doc.text("the goods described and that all particulars are true and correct. ", 14, nextSectionY + 4);
+    nextSectionY += 4;
   
     doc.setFont(undefined, "bold");
     doc.text(`for ${company.name}`, 200, nextSectionY, { align: "right" });
