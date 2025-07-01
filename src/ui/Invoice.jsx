@@ -11,7 +11,7 @@ import {
   Col,
   message,
 } from "antd";
-import { collection, getDocs } from "firebase/firestore";
+import { collection, getDocs, addDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase"; // Adjust the import path as necessary
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -168,7 +168,11 @@ function Invoice() {
   
       doc.setFontSize(16);
       doc.setFont(undefined, "bold");
-      doc.text("Tax Invoice", 105, headerY, { align: "center" });
+      if (gst) {
+        doc.text("Tax Invoice", 105, headerY, { align: "center" });
+      } else {
+        doc.text("Invoice", 105, headerY, { align: "center" });
+      }
       headerY += 10;
   
       doc.setFontSize(14);
@@ -375,7 +379,51 @@ function Invoice() {
       a.click();
       document.body.removeChild(a);
     }
+    
+    // 🔥 POST Invoice to Firestore
+    // Utility to safely return null if value is undefined
+  const safeValue = (value) => (value !== undefined ? value : null);
+
+  const finalAmount = gst ? total.toFixed(2) : subtotal.toFixed(2);
+
+  const invoiceData = {
+    invoiceNo: safeValue(invoiceNo),
+    date: safeValue(date),
+    customer: {
+      name: safeValue(buyer.name),
+      address: safeValue(buyer.address),
+      gstin: safeValue(buyer.gstin),
+      state: safeValue(buyer.state),
+      email: safeValue(buyer.email),
+    },
+    salesperson: {
+      name: safeValue(salesperson?.name),
+      phone: safeValue(salesperson?.phone),
+      id: safeValue(salesperson?.id),
+    },
+    orderNo: safeValue(orderNo),
+    gstIncluded: gst,
+    finalAmount: Number(finalAmount),
+    items: selected.map((item) => ({
+      id: safeValue(item.id),
+      name: safeValue(item.name),
+      hsnCode: safeValue(item.hsnCode || "21050000"),
+      mrp: safeValue(item.mrp),
+      quantity: safeValue(item.quantity),
+      rate: Number(safeValue(item.price)).toFixed(2),
+      amount: (item.price * item.quantity).toFixed(2),
+    })),
   };
+
+  addDoc(collection(db, "invoices"), invoiceData)
+    .then(() => {
+      message.success("Invoice saved to Firestore successfully.");
+    })
+    .catch((error) => {
+      console.error("Error saving invoice:", error);
+      message.error("Failed to save invoice to Firestore.");
+    });
+  }
   
   
   const columns = [
