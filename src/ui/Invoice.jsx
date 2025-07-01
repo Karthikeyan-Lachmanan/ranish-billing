@@ -148,7 +148,7 @@ function Invoice() {
       (p.price * p.quantity).toFixed(2),
     ]);
   
-    const subtotal = rows.reduce((sum, row) => sum + parseFloat(row[5]), 0);
+    const subtotal = rows.reduce((sum, row) => sum + parseFloat(row[6]), 0);
     const gstAmount = gst ? subtotal * 0.18 : 0;
     const total = subtotal + gstAmount;
     const roundedTotal = Math.round(total);
@@ -221,10 +221,10 @@ function Invoice() {
       return Math.max(headerY, salespersonStartY);
     };
   
-    const rowHeight = 6.5;  // Reduced row height
+    const rowHeight = 6.5;
     const headerHeight = 80;
-    const footerReserved = 60; // Less footer space
-
+    const footerReserved = 60;
+  
     const usableHeight = pageHeight - headerHeight - footerReserved;
     const maxRowsFirstPage = Math.floor(usableHeight / rowHeight);
   
@@ -235,7 +235,7 @@ function Invoice() {
     while (currentIndex < totalRows.length || currentIndex === 0) {
       let headerY = renderHeader();
       let remainingRows = totalRows.length - currentIndex;
-      let maxRows = pageNumber === 1 ? maxRowsFirstPage : maxRowsOtherPages;
+      let maxRows = maxRowsFirstPage;
       let displayRows = remainingRows > maxRows ? maxRows : remainingRows;
   
       let pageRows = totalRows.slice(currentIndex, currentIndex + displayRows);
@@ -243,7 +243,7 @@ function Invoice() {
       if (currentIndex + displayRows >= totalRows.length) {
         let fillerRows = Array.from({ length: maxRows - pageRows.length }, () => ["", "", "", "", "", ""]);
         pageRows = [...pageRows, ...fillerRows];
-        
+  
         pageRows.push([
           "",
           { content: "Total Amount", styles: { halign: "right", fontStyle: "bold" } },
@@ -253,10 +253,10 @@ function Invoice() {
           "",
           { content: total.toFixed(0), styles: { halign: "right", fontStyle: "bold" } }
         ]);
-    } else if (pageRows.length < maxRows) {
+      } else if (pageRows.length < maxRows) {
         let fillerRows = Array.from({ length: maxRows - pageRows.length }, () => ["", "", "", "", "", ""]);
         pageRows = [...pageRows, ...fillerRows];
-    }
+      }
   
       autoTable(doc, {
         startY: headerY,
@@ -280,6 +280,7 @@ function Invoice() {
         pageNumber++;
       }
     }
+  
     doc.setFontSize(8);
     doc.setFont(undefined, "bold");
     doc.text("Total Amount (In Words):", 14, finalY - 4);
@@ -292,12 +293,12 @@ function Invoice() {
       doc.text(line, 14, finalY + (index * 6));
     });
   
+    // Print account details on the right side (fixed)
     doc.setFont(undefined, "bold");
     doc.setFontSize(8);
     doc.text("Account Details:", 120, finalY + 2);
   
     doc.setFont(undefined, "normal");
-    
     doc.text("Account Name: Sri Venkateshwara Dairy Foods", 120, finalY + 6);
     doc.text("Account No: 1783135000005075", 120, finalY + 10);
     doc.text("Branch: NEMILICHERRY", 120, finalY + 14);
@@ -310,6 +311,7 @@ function Invoice() {
     let nextSectionY = finalY + Math.max(wordsBlockHeight, accountBlockHeight) + 10;
   
     if (gst) {
+      // GST Table if GST is included
       autoTable(doc, {
         startY: finalY + 2,
         margin: { left: 14 },
@@ -335,16 +337,20 @@ function Invoice() {
       doc.text(`GST Amount in Words: ${numberToWords(gstAmount)}`, 14, nextSectionY);
       doc.setFontSize(10);
       nextSectionY += 8;
+    } else {
+      // When GST is not included, move up the declaration
+      nextSectionY = finalY + 26;
     }
   
+    // Declaration and Footer
     doc.setFont(undefined, "bold");
     doc.text("Declaration", 14, nextSectionY);
     nextSectionY += 5;
   
-    doc.setFont(undefined, "normal"); 
+    doc.setFont(undefined, "normal");
     doc.text("We declare that this invoice reflects the actual price of ", 14, nextSectionY);
-    doc.text("the goods described and that all particulars are true and correct. ", 14, nextSectionY + 4);
-    nextSectionY += 4;
+    doc.text("the goods described and that all particulars are true and correct.", 14, nextSectionY + 4);
+    nextSectionY += 2;
   
     doc.setFont(undefined, "bold");
     doc.text(`for ${company.name}`, 200, nextSectionY, { align: "right" });
@@ -370,7 +376,6 @@ function Invoice() {
       document.body.removeChild(a);
     }
   };
-  
   
   
   const columns = [
