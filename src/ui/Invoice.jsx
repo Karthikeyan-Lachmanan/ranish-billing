@@ -59,7 +59,7 @@ function Invoice() {
     name: "Sri Venkateshwara Dairy Foods",
     address: "OLD NO32/iD1, New No 18, Amudurmedu, Soorancheri post, Avadi, Chennai - 600072",
     fssai: "12421023001134",
-    gstin: "33IKAP6023R1ZL",
+    gstin: "33IKAPS6023R1ZL",
     state: "Tamilnadu",
     phone: "9489881484",
   });
