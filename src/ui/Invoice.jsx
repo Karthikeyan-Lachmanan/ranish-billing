@@ -147,17 +147,17 @@ function Invoice() {
       Number(p.price).toFixed(2),
       (p.price * p.quantity).toFixed(2),
     ]);
-  
+
     const subtotal = rows.reduce((sum, row) => sum + parseFloat(row[6]), 0);
-    const gstAmount = gst ? subtotal * 0.18 : 0;
+    const gstAmount = gst ? subtotal * 0.05 : 0;
     const total = subtotal + gstAmount;
     const roundedTotal = Math.round(total);
     const roundOffAmount = (roundedTotal - total).toFixed(2);
   
     const gstSummaryRows = gst
       ? [
-          ["", { content: "Output CGST 9%", styles: { halign: "right", fontStyle: "bold" } }, "", "", "", "", { content: (gstAmount / 2).toFixed(2), styles: { halign: "right" } }],
-          ["", { content: "Output SGST 9%", styles: { halign: "right", fontStyle: "bold" } }, "", "", "", "", { content: (gstAmount / 2).toFixed(2), styles: { halign: "right" } }],
+          ["", { content: "Output CGST 2.5%", styles: { halign: "right", fontStyle: "bold" } }, "", "", "", "", { content: (gstAmount / 2).toFixed(2), styles: { halign: "right" } }],
+          ["", { content: "Output SGST 2.5%", styles: { halign: "right", fontStyle: "bold" } }, "", "", "", "", { content: (gstAmount / 2).toFixed(2), styles: { halign: "right" } }],
         ]
       : [];
   
@@ -325,9 +325,9 @@ function Invoice() {
         body: [[
           "21050000",
           subtotal.toFixed(2),
-          "9%",
+          "2.5%",
           (gstAmount / 2).toFixed(2),
-          "9%",
+          "2.5%",
           (gstAmount / 2).toFixed(2),
           gstAmount.toFixed(2),
         ]],
