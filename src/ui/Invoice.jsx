@@ -590,7 +590,7 @@ function Invoice() {
         <Row gutter={16} align="middle">
           <Col>
             <Checkbox checked={gst} onChange={(e) => setGst(e.target.checked)}>
-              Add 18% GST
+              Add 5% GST
             </Checkbox>
           </Col>
           <Col>
