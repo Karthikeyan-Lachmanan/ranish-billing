@@ -456,7 +456,7 @@ function Invoice() {
   const totalAmount = selected.reduce(
     (sum, p) => sum + p.price * p.quantity,
     0
-  ) * (gst ? 1.18 : 1);
+  ) * (gst ? 1.05 : 1);
 
   return (
     <div style={{ padding: "2rem" }}>
