@@ -14,7 +14,7 @@
     "firebase-admin": "^13.4.0",
     "jspdf": "^3.0.1",
     "jspdf-autotable": "^5.0.2",
-    "next": "15.3.4",
+    "next": "^15.3.6",
     "pdfmake": "^0.2.4",
     "pdfmake-browserified": "^0.1.4",
     "rc-util": "^5.44.4",
