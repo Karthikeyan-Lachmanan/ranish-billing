@@ -1,6 +1,41 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: true
+  reactStrictMode: true,
+  transpilePackages: [
+    'rc-util',
+    'rc-pagination',
+    'rc-picker',
+    'rc-input',
+    'rc-select',
+    'rc-tree',
+    'rc-table',
+    'rc-cascader',
+    'rc-overflow',
+    'rc-notification',
+    'rc-tooltip',
+    'rc-dropdown',
+    'rc-menu',
+    'rc-motion',
+    'rc-virtual-list',
+    'rc-field-form',
+    'rc-image',
+    'rc-upload',
+    'rc-checkbox',
+    'rc-switch',
+    'rc-radio',
+    'rc-tabs',
+    'rc-resize-observer',
+    'rc-align',
+    'rc-trigger',
+    'rc-slider',
+    'rc-input-number',
+    '@rc-component/mutate-observer',
+    '@rc-component/portal',
+    '@rc-component/trigger',
+    '@rc-component/tour',
+    '@rc-component/mini-decimal',
+    '@rc-component/color-picker',
+  ]
 };
 
 export default nextConfig;
