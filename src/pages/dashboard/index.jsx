@@ -162,6 +162,16 @@ export default function DashboardPage() {
         return yearMatch && monthMatch;
       });
 
+      filtered.sort((a, b) => {
+        const isNumeric = (val) => /^\d+$/.test(String(val || ""));
+        const numA = isNumeric(a.invoiceNo) ? parseInt(a.invoiceNo, 10) : null;
+        const numB = isNumeric(b.invoiceNo) ? parseInt(b.invoiceNo, 10) : null;
+        if (numA !== null && numB !== null) return numB - numA;
+        if (numA !== null) return -1;
+        if (numB !== null) return 1;
+        return b.id.localeCompare(a.id);
+      });
+
       if (filtered.length === 0) {
         message.warning("No invoices found for the selected period.");
         setExportLoading(false);

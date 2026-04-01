@@ -11,6 +11,9 @@ function InvoiceList() {
   const [loading, setLoading] = useState(false);
   const [searchBy, setSearchBy] = useState("invoiceNo");
   const [searchTerm, setSearchTerm] = useState("");
+  const [filterMonth, setFilterMonth] = useState(null);
+  const [filterYear, setFilterYear] = useState(null);
+  const [filterStatus, setFilterStatus] = useState(null);
 
   // Settlement Modal State
   const [isModalVisible, setIsModalVisible] = useState(false);
@@ -45,20 +48,19 @@ function InvoiceList() {
           };
         })
         .filter(invoice => invoice.gstIncluded === true)
-        // Sort by date in descending order (latest first)
         .sort((a, b) => {
-          const parseDate = (dateStr) => {
-            if (!dateStr) return 0;
-            const parts = dateStr.split('/');
-            if (parts.length === 3) {
-              const day = parseInt(parts[0], 10);
-              const month = parseInt(parts[1], 10) - 1; // Months are 0-indexed in JS
-              const year = parseInt(parts[2], 10);
-              return new Date(year, month, day).getTime();
-            }
-            return 0; // Fallback if format is weird
-          };
-          return parseDate(b.date) - parseDate(a.date);
+          const isNumeric = (val) => /^\d+$/.test(String(val || ""));
+          const numA = isNumeric(a.invoiceNo) ? parseInt(a.invoiceNo, 10) : null;
+          const numB = isNumeric(b.invoiceNo) ? parseInt(b.invoiceNo, 10) : null;
+
+          // Both numeric: higher number first
+          if (numA !== null && numB !== null) return numB - numA;
+          // Only A is numeric: A comes first
+          if (numA !== null) return -1;
+          // Only B is numeric: B comes first
+          if (numB !== null) return 1;
+          // Both alphanumeric: sort by Firestore doc ID (creation order, newest first)
+          return b.id.localeCompare(a.id);
         });
 
       setAllInvoices(invoicesList);
@@ -77,28 +79,41 @@ function InvoiceList() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Effect to automatically filter when search term or criteria changes
+  // Effect to automatically filter when search term, criteria, month, or year changes
   useEffect(() => {
-    if (!searchTerm.trim()) {
-      setInvoices(allInvoices);
-      return;
+    let filtered = allInvoices;
+
+    if (filterYear || filterMonth) {
+      filtered = filtered.filter(inv => {
+        if (!inv.date) return false;
+        const parts = inv.date.split("/");
+        if (parts.length !== 3) return false;
+        const invMonth = parseInt(parts[1], 10);
+        const invYear = parseInt(parts[2], 10);
+        if (filterYear && invYear !== filterYear) return false;
+        if (filterMonth && invMonth !== filterMonth) return false;
+        return true;
+      });
     }
 
-    const term = searchTerm.toLowerCase();
-    const filtered = allInvoices.filter(inv => {
-      let valueToSearch = "";
-      if (searchBy === "invoiceNo") valueToSearch = inv.invoiceNo;
-      if (searchBy === "customerName") valueToSearch = inv.customer?.name;
-      if (searchBy === "salespersonName") valueToSearch = inv.salesperson?.name;
+    if (filterStatus) {
+      filtered = filtered.filter(inv => inv.paymentStatus === filterStatus);
+    }
 
-      if (!valueToSearch) return false;
-
-      // Perform case-insensitive partial match
-      return String(valueToSearch).toLowerCase().includes(term);
-    });
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase();
+      filtered = filtered.filter(inv => {
+        let valueToSearch = "";
+        if (searchBy === "invoiceNo") valueToSearch = inv.invoiceNo;
+        if (searchBy === "customerName") valueToSearch = inv.customer?.name;
+        if (searchBy === "salespersonName") valueToSearch = inv.salesperson?.name;
+        if (!valueToSearch) return false;
+        return String(valueToSearch).toLowerCase().includes(term);
+      });
+    }
 
     setInvoices(filtered);
-  }, [searchTerm, searchBy, allInvoices]);
+  }, [searchTerm, searchBy, filterMonth, filterYear, filterStatus, allInvoices]);
 
   const handleSearch = () => {
     // Auto-filtering handled by useEffect
@@ -107,7 +122,17 @@ function InvoiceList() {
   const handleReset = () => {
     setSearchTerm("");
     setSearchBy("invoiceNo");
+    setFilterMonth(null);
+    setFilterYear(null);
+    setFilterStatus(null);
   };
+
+  const availableYears = [...new Set(
+    allInvoices
+      .map(inv => inv.date?.split("/")?.[2])
+      .filter(Boolean)
+      .map(Number)
+  )].sort((a, b) => b - a);
 
   const openSettleModal = (record) => {
     setSettlingInvoice(record);
@@ -251,7 +276,40 @@ function InvoiceList() {
   return (
     <div style={{ padding: "2rem" }}>
       <h2>All Bills</h2>
-      <Space style={{ marginBottom: 16 }}>
+      <Space style={{ marginBottom: 16 }} wrap>
+        <Select
+          value={filterMonth}
+          onChange={setFilterMonth}
+          placeholder="All Months"
+          allowClear
+          style={{ width: 140 }}
+        >
+          {["January","February","March","April","May","June","July","August","September","October","November","December"]
+            .map((name, i) => (
+              <Option key={i + 1} value={i + 1}>{name}</Option>
+            ))}
+        </Select>
+        <Select
+          value={filterYear}
+          onChange={setFilterYear}
+          placeholder="All Years"
+          allowClear
+          style={{ width: 110 }}
+        >
+          {availableYears.map(year => (
+            <Option key={year} value={year}>{year}</Option>
+          ))}
+        </Select>
+        <Select
+          value={filterStatus}
+          onChange={setFilterStatus}
+          placeholder="All Status"
+          allowClear
+          style={{ width: 130 }}
+        >
+          <Option value="Pending">Pending</Option>
+          <Option value="Partial">Partial</Option>
+        </Select>
         <Select
           value={searchBy}
           onChange={(value) => setSearchBy(value)}

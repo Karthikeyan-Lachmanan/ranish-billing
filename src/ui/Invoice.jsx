@@ -108,9 +108,39 @@ function Invoice() {
       }
     };
 
+    const fetchNextInvoiceNo = async () => {
+      try {
+        const today = new Date();
+        const fyStartYear = today.getMonth() >= 3 ? today.getFullYear() : today.getFullYear() - 1;
+        const fyStart = new Date(fyStartYear, 3, 1);       // April 1
+        const fyEnd = new Date(fyStartYear + 1, 2, 31, 23, 59, 59); // March 31
+
+        const isInCurrentFY = (dateStr) => {
+          if (!dateStr) return false;
+          const [day, month, year] = dateStr.split("/").map(Number);
+          const d = new Date(year, month - 1, day);
+          return d >= fyStart && d <= fyEnd;
+        };
+
+        const snapshot = await getDocs(collection(db, "invoices"));
+        let max = 0;
+        snapshot.docs.forEach((doc) => {
+          const data = doc.data();
+          if (isInCurrentFY(data.date)) {
+            const num = parseInt(data.invoiceNo, 10);
+            if (!isNaN(num) && num > max) max = num;
+          }
+        });
+        setInvoiceNo(String(max + 1).padStart(4, "0"));
+      } catch (err) {
+        console.error("Failed to fetch invoice number:", err);
+      }
+    };
+
     fetchSalespersons();
     fetchProducts();
     fetchCustomers();
+    fetchNextInvoiceNo();
   }, []);
 
   const addProduct = (productId) => {
@@ -509,11 +539,7 @@ function Invoice() {
 
       <Form layout="inline" style={{ marginBottom: 20 }}>
         <Form.Item label="Invoice No.">
-          <Input
-            placeholder="Enter Invoice Number"
-            value={invoiceNo}
-            onChange={(e) => setInvoiceNo(e.target.value)}
-          />
+          <Input value={invoiceNo} readOnly />
         </Form.Item>
 
         <Form.Item label="Order No.">
