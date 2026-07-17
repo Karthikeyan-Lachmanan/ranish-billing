@@ -1,8 +1,9 @@
 import { useEffect, useState, useMemo } from "react";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase"; // Adjust the path if needed
-import { Select, Card, Row, Col, Typography, message, Spin, Button } from "antd";
+import { Select, Card, Row, Col, Typography, message, Spin, Button, DatePicker, Radio } from "antd";
 import * as XLSX from "xlsx";
+import dayjs from "dayjs";
 import {
   BarChart,
   Bar,
@@ -19,6 +20,7 @@ import {
 
 const { Title } = Typography;
 const { Option } = Select;
+const { RangePicker } = DatePicker;
 
 // Helper to parse "DD/MM/YYYY" format
 const parseDateString = (dateStr) => {
@@ -44,6 +46,10 @@ export default function DashboardPage() {
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   // Default to current year
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+
+  // Salesperson pie chart: "month" (uses selectedMonth/selectedYear) or "range" (uses pieDateRange)
+  const [pieDateFilterMode, setPieDateFilterMode] = useState("month");
+  const [pieDateRange, setPieDateRange] = useState(null);
 
   useEffect(() => {
     const fetchInvoices = async () => {
@@ -103,31 +109,36 @@ export default function DashboardPage() {
   }, [invoices, selectedYear]);
 
 
-  // 2. Process data for the Pie Chart (Group by Salesperson for the selected month/year)
+  // 2. Process data for the Pie Chart (Group by Salesperson for the selected month/year or custom date range)
   const salespersonChartData = useMemo(() => {
     const dataObj = {};
 
-    invoices.forEach((inv) => {
-      if (
-        inv.parsedDate &&
-        inv.parsedDate.getFullYear() === selectedYear &&
-        inv.parsedDate.getMonth() === selectedMonth
-      ) {
-        const spName = inv.salesperson?.name || "Unknown";
-        const amt = parseFloat(inv.finalAmount) || 0;
+    const rangeStart = pieDateRange?.[0] ? pieDateRange[0].startOf("day").toDate() : null;
+    const rangeEnd = pieDateRange?.[1] ? pieDateRange[1].endOf("day").toDate() : null;
 
-        if (!dataObj[spName]) {
-          dataObj[spName] = 0;
-        }
-        dataObj[spName] += amt;
+    invoices.forEach((inv) => {
+      if (!inv.parsedDate) return;
+
+      const matches = pieDateFilterMode === "range"
+        ? rangeStart && rangeEnd && inv.parsedDate >= rangeStart && inv.parsedDate <= rangeEnd
+        : inv.parsedDate.getFullYear() === selectedYear && inv.parsedDate.getMonth() === selectedMonth;
+
+      if (!matches) return;
+
+      const spName = inv.salesperson?.name || "Unknown";
+      const amt = parseFloat(inv.finalAmount) || 0;
+
+      if (!dataObj[spName]) {
+        dataObj[spName] = 0;
       }
+      dataObj[spName] += amt;
     });
 
     return Object.keys(dataObj).map(name => ({
       name,
       value: dataObj[name]
     })).sort((a, b) => b.value - a.value); // sort largest first
-  }, [invoices, selectedMonth, selectedYear]);
+  }, [invoices, selectedMonth, selectedYear, pieDateFilterMode, pieDateRange]);
 
   // Extract unique years from data for the Year selector
   const availableYears = useMemo(() => {
@@ -313,17 +324,43 @@ export default function DashboardPage() {
         {/* MONTHLY PIE CHART (SALESPERSON BREAKDOWN) */}
         <Col span={24} lg={12}>
           <Card
-            title={`Sales by Person - ${monthNames[selectedMonth]} ${selectedYear}`}
+            title={
+              pieDateFilterMode === "range"
+                ? pieDateRange?.[0] && pieDateRange?.[1]
+                  ? `Sales by Person - ${pieDateRange[0].format("DD/MM/YYYY")} to ${pieDateRange[1].format("DD/MM/YYYY")}`
+                  : "Sales by Person - Custom Range"
+                : `Sales by Person - ${monthNames[selectedMonth]} ${selectedYear}`
+            }
             extra={
-              <Select
-                value={selectedMonth}
-                onChange={setSelectedMonth}
-                style={{ width: 150 }}
-              >
-                {monthNames.map((name, index) => (
-                  <Option key={index} value={index}>{name}</Option>
-                ))}
-              </Select>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <Radio.Group
+                  value={pieDateFilterMode}
+                  onChange={(e) => setPieDateFilterMode(e.target.value)}
+                  optionType="button"
+                  size="small"
+                >
+                  <Radio.Button value="month">Month</Radio.Button>
+                  <Radio.Button value="range">Custom Range</Radio.Button>
+                </Radio.Group>
+                {pieDateFilterMode === "range" ? (
+                  <RangePicker
+                    value={pieDateRange}
+                    onChange={setPieDateRange}
+                    format="DD/MM/YYYY"
+                    allowClear
+                  />
+                ) : (
+                  <Select
+                    value={selectedMonth}
+                    onChange={setSelectedMonth}
+                    style={{ width: 150 }}
+                  >
+                    {monthNames.map((name, index) => (
+                      <Option key={index} value={index}>{name}</Option>
+                    ))}
+                  </Select>
+                )}
+              </div>
             }
           >
             <div style={{ width: '100%', height: 400 }}>
@@ -350,7 +387,11 @@ export default function DashboardPage() {
                 </ResponsiveContainer>
               ) : (
                 <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', color: '#999' }}>
-                  No sales data available for {monthNames[selectedMonth]} {selectedYear}.
+                  {pieDateFilterMode === "range"
+                    ? pieDateRange?.[0] && pieDateRange?.[1]
+                      ? `No sales data available for ${pieDateRange[0].format("DD/MM/YYYY")} to ${pieDateRange[1].format("DD/MM/YYYY")}.`
+                      : "Select a date range to view sales data."
+                    : `No sales data available for ${monthNames[selectedMonth]} ${selectedYear}.`}
                 </div>
               )}
             </div>

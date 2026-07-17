@@ -1,9 +1,34 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
 import { collection, getDocs, query, where, doc, updateDoc, arrayUnion } from "firebase/firestore";
 import { db } from "@/lib/firebase"; // Adjust the path if needed
-import { Table, message, Input, Select, Button, Space, Modal, Form, Checkbox, InputNumber, Tag } from "antd";
+import { Table, message, Input, Select, Button, Space, Modal, Form, Checkbox, InputNumber, Tag, DatePicker, Card, Row, Col, Statistic } from "antd";
+import * as XLSX from "xlsx";
+import dayjs from "dayjs";
 
 const { Option } = Select;
+const { RangePicker } = DatePicker;
+
+const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+const formatCurrency = (value) => (parseFloat(value) || 0).toFixed(2);
+
+// Meter fill color by how much of the billed amount is still pending
+const getPendingSeverityColor = (ratio) => {
+  if (ratio >= 0.6) return "#d03b3b"; // critical
+  if (ratio >= 0.3) return "#fab219"; // warning
+  return "#0ca30c"; // good
+};
+
+const parseInvoiceDate = (dateStr) => {
+  if (!dateStr) return null;
+  const parts = dateStr.split("/");
+  if (parts.length !== 3) return null;
+  const day = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10) - 1;
+  const year = parseInt(parts[2], 10);
+  const date = new Date(year, month, day);
+  return isNaN(date.getTime()) ? null : date;
+};
 
 function InvoiceList() {
   const [invoices, setInvoices] = useState([]);
@@ -13,7 +38,15 @@ function InvoiceList() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterMonth, setFilterMonth] = useState(null);
   const [filterYear, setFilterYear] = useState(null);
-  const [filterStatus, setFilterStatus] = useState(null);
+  const [filterStatus, setFilterStatus] = useState([]);
+  const [filterSalesperson, setFilterSalesperson] = useState(null);
+  const [exportLoading, setExportLoading] = useState(false);
+
+  // Customer List Export Modal State
+  const [isCustomerListModalVisible, setIsCustomerListModalVisible] = useState(false);
+  const [customerListDateRange, setCustomerListDateRange] = useState(null);
+  const [customerListSalespersons, setCustomerListSalespersons] = useState([]);
+  const [customerListLoading, setCustomerListLoading] = useState(false);
 
   // Settlement Modal State
   const [isModalVisible, setIsModalVisible] = useState(false);
@@ -96,8 +129,12 @@ function InvoiceList() {
       });
     }
 
-    if (filterStatus) {
-      filtered = filtered.filter(inv => inv.paymentStatus === filterStatus);
+    if (filterStatus && filterStatus.length > 0) {
+      filtered = filtered.filter(inv => filterStatus.includes(inv.paymentStatus));
+    }
+
+    if (filterSalesperson) {
+      filtered = filtered.filter(inv => inv.salesperson?.name === filterSalesperson);
     }
 
     if (searchTerm.trim()) {
@@ -113,7 +150,7 @@ function InvoiceList() {
     }
 
     setInvoices(filtered);
-  }, [searchTerm, searchBy, filterMonth, filterYear, filterStatus, allInvoices]);
+  }, [searchTerm, searchBy, filterMonth, filterYear, filterStatus, filterSalesperson, allInvoices]);
 
   const handleSearch = () => {
     // Auto-filtering handled by useEffect
@@ -124,7 +161,8 @@ function InvoiceList() {
     setSearchBy("invoiceNo");
     setFilterMonth(null);
     setFilterYear(null);
-    setFilterStatus(null);
+    setFilterStatus([]);
+    setFilterSalesperson(null);
   };
 
   const availableYears = [...new Set(
@@ -134,12 +172,134 @@ function InvoiceList() {
       .map(Number)
   )].sort((a, b) => b - a);
 
+  const availableSalespersons = [...new Set(
+    allInvoices
+      .map(inv => inv.salesperson?.name)
+      .filter(Boolean)
+  )].sort((a, b) => a.localeCompare(b));
+
+  const today = dayjs();
+  const currentYear = today.year();
+  const currentMonthNum = today.month() + 1;
+
+  let pendingThisMonth = 0;
+  let billedThisMonth = 0;
+  let pendingThisYear = 0;
+  let billedThisYear = 0;
+
+  allInvoices.forEach(inv => {
+    const invDate = parseInvoiceDate(inv.date);
+    if (!invDate || invDate.getFullYear() !== currentYear) return;
+    const balance = Math.max(parseFloat(inv.balanceAmount) || 0, 0);
+    const finalAmount = parseFloat(inv.finalAmount) || 0;
+
+    billedThisYear += finalAmount;
+    pendingThisYear += balance;
+
+    if (invDate.getMonth() + 1 === currentMonthNum) {
+      billedThisMonth += finalAmount;
+      pendingThisMonth += balance;
+    }
+  });
+
+  const pendingRatioThisMonth = billedThisMonth > 0 ? pendingThisMonth / billedThisMonth : 0;
+  const pendingRatioThisYear = billedThisYear > 0 ? pendingThisYear / billedThisYear : 0;
+
+  const handleExportExcel = () => {
+    setExportLoading(true);
+    try {
+      if (invoices.length === 0) {
+        message.warning("No invoices to export.");
+        return;
+      }
+
+      const rows = invoices.map(inv => ({
+        "Invoice No": inv.invoiceNo || "-",
+        "Date": inv.date || "-",
+        "Customer Name": inv.customer?.name || "-",
+        "Customer Address": inv.customer?.address || "-",
+        "Sales Person": inv.salesperson?.name || "-",
+        "Final Amount (₹)": formatCurrency(inv.finalAmount),
+        "Settled Amount (₹)": formatCurrency(inv.settledAmount),
+        "Balance (₹)": formatCurrency(inv.balanceAmount),
+        "Status": inv.paymentStatus || "-",
+        "Settled On": inv.finalSettlementDate ? new Date(inv.finalSettlementDate).toLocaleDateString() : "-",
+      }));
+
+      const worksheet = XLSX.utils.json_to_sheet(rows);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Invoices");
+      XLSX.writeFile(workbook, `invoices_${Date.now()}.xlsx`);
+      message.success("Excel file downloaded successfully!");
+    } catch (err) {
+      console.error("Export failed:", err);
+      message.error("Failed to export data.");
+    } finally {
+      setExportLoading(false);
+    }
+  };
+
+  const disableCustomerListDate = (current) => {
+    if (!current) return false;
+    const rangeStart = dayjs().subtract(1, "month").startOf("month");
+    const rangeEnd = dayjs().endOf("month");
+    return current < rangeStart || current > rangeEnd;
+  };
+
+  const handleDownloadCustomerList = () => {
+    if (!customerListSalespersons || customerListSalespersons.length === 0) {
+      message.error("Please select at least one sales person.");
+      return;
+    }
+
+    setCustomerListLoading(true);
+    try {
+      let filtered = allInvoices.filter(inv =>
+        customerListSalespersons.includes(inv.salesperson?.name)
+      );
+
+      if (customerListDateRange && customerListDateRange[0] && customerListDateRange[1]) {
+        const start = customerListDateRange[0].startOf("day").toDate();
+        const end = customerListDateRange[1].endOf("day").toDate();
+        filtered = filtered.filter(inv => {
+          const invDate = parseInvoiceDate(inv.date);
+          return invDate && invDate >= start && invDate <= end;
+        });
+      }
+
+      if (filtered.length === 0) {
+        message.error("No data available to download for the selected date range and sales person(s).");
+        return;
+      }
+
+      const rows = filtered.map(inv => ({
+        "Date": inv.date || "-",
+        "Customer Name": inv.customer?.name || "-",
+        "Customer Address": inv.customer?.address || "-",
+      }));
+
+      const worksheet = XLSX.utils.json_to_sheet(rows);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Customers");
+      XLSX.writeFile(workbook, `customer_list_${Date.now()}.xlsx`);
+      message.success("Customer list downloaded successfully!");
+      setIsCustomerListModalVisible(false);
+      setCustomerListDateRange(null);
+      setCustomerListSalespersons([]);
+    } catch (err) {
+      console.error("Customer list export failed:", err);
+      message.error("Failed to export customer list.");
+    } finally {
+      setCustomerListLoading(false);
+    }
+  };
+
   const openSettleModal = (record) => {
     setSettlingInvoice(record);
     setIsFullSettlement(true);
     form.setFieldsValue({
       isFullSettlement: true,
-      amount: record.balanceAmount,
+      amount: Number(formatCurrency(record.balanceAmount)),
       method: "Cash" // default
     });
     setIsModalVisible(true);
@@ -149,7 +309,7 @@ function InvoiceList() {
     const checked = e.target.checked;
     setIsFullSettlement(checked);
     if (checked && settlingInvoice) {
-      form.setFieldsValue({ amount: settlingInvoice.balanceAmount });
+      form.setFieldsValue({ amount: Number(formatCurrency(settlingInvoice.balanceAmount)) });
     }
   };
 
@@ -194,7 +354,7 @@ function InvoiceList() {
 
       await updateDoc(invoiceRef, updateData);
 
-      message.success(`Successfully settled ₹${paymentAmount}.`);
+      message.success(`Successfully settled ₹${formatCurrency(paymentAmount)}.`);
       setIsModalVisible(false);
       form.resetFields();
       
@@ -234,12 +394,17 @@ function InvoiceList() {
     { title: "Customer Name", dataIndex: ["customer", "name"], key: "customerName" },
     { title: "Customer Address", dataIndex: ["customer", "address"], key: "customerAddress" },
     { title: "Sales Person", dataIndex: ["salesperson", "name"], key: "salespersonName" },
-    { title: "Final Amount (₹)", dataIndex: "finalAmount", key: "finalAmount" },
+    {
+      title: "Final Amount (₹)",
+      dataIndex: "finalAmount",
+      key: "finalAmount",
+      render: (amount) => formatCurrency(amount)
+    },
     {
       title: "Balance (₹)",
       dataIndex: "balanceAmount",
       key: "balanceAmount",
-      render: (amount) => <b>₹{amount}</b>
+      render: (amount) => <b>₹{formatCurrency(amount)}</b>
     },
     {
       title: "Status",
@@ -262,8 +427,8 @@ function InvoiceList() {
       title: "Action",
       key: "action",
       render: (_, record) => (
-        <Button 
-          type="primary" 
+        <Button
+          type="primary"
           onClick={() => openSettleModal(record)}
           disabled={record.paymentStatus === "Completed"}
         >
@@ -276,6 +441,72 @@ function InvoiceList() {
   return (
     <div style={{ padding: "2rem" }}>
       <h2>All Bills</h2>
+
+      <Row gutter={16} style={{ marginBottom: 16 }}>
+        <Col xs={24} sm={12} md={8}>
+          <Card size="small">
+            <Statistic
+              title={`Pending — ${MONTH_LABELS[currentMonthNum - 1]} ${currentYear}`}
+              value={pendingThisMonth}
+              precision={2}
+              prefix="₹"
+            />
+            <div
+              style={{
+                marginTop: 12,
+                height: 8,
+                borderRadius: 4,
+                background: "#e1e0d9",
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  height: "100%",
+                  width: `${Math.min(pendingRatioThisMonth, 1) * 100}%`,
+                  background: getPendingSeverityColor(pendingRatioThisMonth),
+                  borderRadius: 4,
+                }}
+              />
+            </div>
+            <div style={{ marginTop: 4, fontSize: 12, color: "#52514e" }}>
+              {Math.round(pendingRatioThisMonth * 100)}% of ₹{formatCurrency(billedThisMonth)} billed pending
+            </div>
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} md={8}>
+          <Card size="small">
+            <Statistic
+              title={`Pending — ${currentYear}`}
+              value={pendingThisYear}
+              precision={2}
+              prefix="₹"
+            />
+            <div
+              style={{
+                marginTop: 12,
+                height: 8,
+                borderRadius: 4,
+                background: "#e1e0d9",
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  height: "100%",
+                  width: `${Math.min(pendingRatioThisYear, 1) * 100}%`,
+                  background: getPendingSeverityColor(pendingRatioThisYear),
+                  borderRadius: 4,
+                }}
+              />
+            </div>
+            <div style={{ marginTop: 4, fontSize: 12, color: "#52514e" }}>
+              {Math.round(pendingRatioThisYear * 100)}% of ₹{formatCurrency(billedThisYear)} billed pending
+            </div>
+          </Card>
+        </Col>
+      </Row>
+
       <Space style={{ marginBottom: 16 }} wrap>
         <Select
           value={filterMonth}
@@ -301,14 +532,29 @@ function InvoiceList() {
           ))}
         </Select>
         <Select
+          mode="multiple"
           value={filterStatus}
           onChange={setFilterStatus}
           placeholder="All Status"
           allowClear
-          style={{ width: 130 }}
+          maxTagCount="responsive"
+          style={{ width: 200 }}
         >
           <Option value="Pending">Pending</Option>
           <Option value="Partial">Partial</Option>
+          <Option value="Completed">Completed</Option>
+        </Select>
+        <Select
+          value={filterSalesperson}
+          onChange={setFilterSalesperson}
+          placeholder="All Sales Persons"
+          allowClear
+          showSearch
+          style={{ width: 180 }}
+        >
+          {availableSalespersons.map(name => (
+            <Option key={name} value={name}>{name}</Option>
+          ))}
         </Select>
         <Select
           value={searchBy}
@@ -333,6 +579,12 @@ function InvoiceList() {
         <Button onClick={handleReset}>
           Reset
         </Button>
+        <Button onClick={handleExportExcel} loading={exportLoading}>
+          Download Excel
+        </Button>
+        <Button onClick={() => setIsCustomerListModalVisible(true)}>
+          Download Customer List
+        </Button>
       </Space>
       <Table
         dataSource={invoices}
@@ -347,7 +599,7 @@ function InvoiceList() {
             }
             const paymentColumns = [
               { title: 'Date', dataIndex: 'date', key: 'date', render: d => new Date(d).toLocaleString() },
-              { title: 'Amount', dataIndex: 'amount', key: 'amount', render: amt => `₹${amt}` },
+              { title: 'Amount', dataIndex: 'amount', key: 'amount', render: amt => `₹${formatCurrency(amt)}` },
               { title: 'Method', dataIndex: 'method', key: 'method' },
             ];
             return (
@@ -379,8 +631,8 @@ function InvoiceList() {
           style={{ marginTop: 16 }}
         >
           <div style={{ marginBottom: 16 }}>
-            <strong>Total Bill Amount:</strong> ₹{settlingInvoice?.finalAmount} <br/>
-            <strong>Remaining Balance:</strong> <span style={{ color: 'red' }}>₹{settlingInvoice?.balanceAmount}</span>
+            <strong>Total Bill Amount:</strong> ₹{formatCurrency(settlingInvoice?.finalAmount)} <br/>
+            <strong>Remaining Balance:</strong> <span style={{ color: 'red' }}>₹{formatCurrency(settlingInvoice?.balanceAmount)}</span>
           </div>
 
           <Form.Item name="isFullSettlement" valuePropName="checked">
@@ -397,10 +649,11 @@ function InvoiceList() {
               { type: 'number', min: 1, message: "Amount must be greater than 0" }
             ]}
           >
-            <InputNumber 
-              style={{ width: '100%' }} 
+            <InputNumber
+              style={{ width: '100%' }}
               disabled={isFullSettlement}
               prefix="₹"
+              precision={2}
             />
           </Form.Item>
 
@@ -413,8 +666,9 @@ function InvoiceList() {
               <Option value="Cash">Cash</Option>
               <Option value="Card">Card</Option>
               <Option value="UPI">UPI</Option>
-              <Option value="Bank Transfer">Bank Transfer</Option>
-              <Option value="Cheque">Cheque</Option>
+              <Option value="Advance">Advance</Option>
+              <Option value="Due">Due</Option>
+              <Option value="DamageOrReturn">Damage or Return</Option>
             </Select>
           </Form.Item>
 
@@ -427,6 +681,59 @@ function InvoiceList() {
             </Button>
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        title="Download Customer List"
+        open={isCustomerListModalVisible}
+        onCancel={() => setIsCustomerListModalVisible(false)}
+        footer={null}
+        destroyOnClose
+      >
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ marginBottom: 8 }}>Date Range (optional)</div>
+          <RangePicker
+            style={{ width: "100%" }}
+            format="DD/MM/YYYY"
+            value={customerListDateRange}
+            onChange={setCustomerListDateRange}
+            disabledDate={disableCustomerListDate}
+            allowClear
+          />
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ marginBottom: 8 }}>Sales Person (required)</div>
+          <Select
+            mode="multiple"
+            style={{ width: "100%" }}
+            placeholder="Select at least one sales person"
+            value={customerListSalespersons}
+            onChange={setCustomerListSalespersons}
+            allowClear
+            showSearch
+          >
+            {availableSalespersons.map(name => (
+              <Option key={name} value={name}>{name}</Option>
+            ))}
+          </Select>
+        </div>
+
+        <div style={{ textAlign: "right" }}>
+          <Button
+            onClick={() => setIsCustomerListModalVisible(false)}
+            style={{ marginRight: 8 }}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="primary"
+            onClick={handleDownloadCustomerList}
+            loading={customerListLoading}
+          >
+            Download
+          </Button>
+        </div>
       </Modal>
     </div>
   );
