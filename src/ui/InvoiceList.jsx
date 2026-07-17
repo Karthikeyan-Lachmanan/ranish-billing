@@ -219,12 +219,29 @@ function InvoiceList() {
         "Customer Name": inv.customer?.name || "-",
         "Customer Address": inv.customer?.address || "-",
         "Sales Person": inv.salesperson?.name || "-",
-        "Final Amount (₹)": formatCurrency(inv.finalAmount),
-        "Settled Amount (₹)": formatCurrency(inv.settledAmount),
-        "Balance (₹)": formatCurrency(inv.balanceAmount),
+        "Final Amount (₹)": Number(formatCurrency(inv.finalAmount)),
+        "Settled Amount (₹)": Number(formatCurrency(inv.settledAmount)),
+        "Balance (₹)": Number(formatCurrency(inv.balanceAmount)),
         "Status": inv.paymentStatus || "-",
-        "Settled On": inv.finalSettlementDate ? new Date(inv.finalSettlementDate).toLocaleDateString() : "-",
+        // "Settled On": inv.finalSettlementDate ? new Date(inv.finalSettlementDate).toLocaleDateString() : "-",
       }));
+
+      const totalFinalAmount = invoices.reduce((sum, inv) => sum + (parseFloat(inv.finalAmount) || 0), 0);
+      const totalSettledAmount = invoices.reduce((sum, inv) => sum + (parseFloat(inv.settledAmount) || 0), 0);
+      const totalBalanceAmount = invoices.reduce((sum, inv) => sum + (parseFloat(inv.balanceAmount) || 0), 0);
+
+      rows.push({
+        "Invoice No": "Total",
+        "Date": "",
+        "Customer Name": "",
+        "Customer Address": "",
+        "Sales Person": "",
+        "Final Amount (₹)": Number(formatCurrency(totalFinalAmount)),
+        "Settled Amount (₹)": Number(formatCurrency(totalSettledAmount)),
+        "Balance (₹)": Number(formatCurrency(totalBalanceAmount)),
+        "Status": "",
+        "Settled On": "",
+      });
 
       const worksheet = XLSX.utils.json_to_sheet(rows);
       const workbook = XLSX.utils.book_new();
