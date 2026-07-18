@@ -182,6 +182,12 @@ function InvoiceList() {
   const currentYear = today.year();
   const currentMonthNum = today.month() + 1;
 
+  // Indian financial year: April 1 - March 31
+  const fyStartYear = today.month() >= 3 ? currentYear : currentYear - 1;
+  const fyStart = new Date(fyStartYear, 3, 1);
+  const fyEnd = new Date(fyStartYear + 1, 2, 31, 23, 59, 59, 999);
+  const fyLabel = `FY ${fyStartYear}-${String(fyStartYear + 1).slice(-2)}`;
+
   let pendingThisMonth = 0;
   let billedThisMonth = 0;
   let pendingThisYear = 0;
@@ -189,14 +195,18 @@ function InvoiceList() {
 
   allInvoices.forEach(inv => {
     const invDate = parseInvoiceDate(inv.date);
-    if (!invDate || invDate.getFullYear() !== currentYear) return;
-    const balance = Math.max(parseFloat(inv.balanceAmount) || 0, 0);
-    const finalAmount = parseFloat(inv.finalAmount) || 0;
+    if (!invDate) return;
 
-    billedThisYear += finalAmount;
-    pendingThisYear += balance;
+    if (invDate >= fyStart && invDate <= fyEnd) {
+      const balance = Math.max(parseFloat(inv.balanceAmount) || 0, 0);
+      const finalAmount = parseFloat(inv.finalAmount) || 0;
+      billedThisYear += finalAmount;
+      pendingThisYear += balance;
+    }
 
-    if (invDate.getMonth() + 1 === currentMonthNum) {
+    if (invDate.getFullYear() === currentYear && invDate.getMonth() + 1 === currentMonthNum) {
+      const balance = Math.max(parseFloat(inv.balanceAmount) || 0, 0);
+      const finalAmount = parseFloat(inv.finalAmount) || 0;
       billedThisMonth += finalAmount;
       pendingThisMonth += balance;
     }
@@ -337,7 +347,7 @@ function InvoiceList() {
     try {
       const paymentAmount = parseFloat(values.amount);
       const currentSettled = settlingInvoice.settledAmount || 0;
-      const currentBalance = settlingInvoice.balanceAmount;
+      const currentBalance = Number(formatCurrency(settlingInvoice.balanceAmount));
       const finalAmount = parseFloat(settlingInvoice.finalAmount);
 
       if (paymentAmount > currentBalance) {
@@ -346,8 +356,8 @@ function InvoiceList() {
         return;
       }
 
-      const newSettledAmount = currentSettled + paymentAmount;
-      const newBalance = finalAmount - newSettledAmount;
+      const newSettledAmount = Number(formatCurrency(currentSettled + paymentAmount));
+      const newBalance = Number(formatCurrency(finalAmount - newSettledAmount));
       const newStatus = newBalance <= 0 ? "Completed" : "Partial";
 
       const paymentRecord = {
@@ -494,7 +504,7 @@ function InvoiceList() {
         <Col xs={24} sm={12} md={8}>
           <Card size="small">
             <Statistic
-              title={`Pending — ${currentYear}`}
+              title={`Pending — ${fyLabel}`}
               value={pendingThisYear}
               precision={2}
               prefix="₹"
