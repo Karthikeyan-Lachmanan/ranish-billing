@@ -13,6 +13,7 @@ import {
 } from "antd";
 import { collection, getDocs, addDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase"; // Adjust the import path as necessary
+import { DEFAULT_SET, DEFAULT_SET_ID, getProductSetId } from "@/lib/productSets";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
@@ -46,6 +47,8 @@ const numberToWords = (num) => {
 
 function Invoice() {
   const [products, setProducts] = useState([]);
+  const [productSets, setProductSets] = useState([DEFAULT_SET]);
+  const [productSetId, setProductSetId] = useState(DEFAULT_SET_ID);
   const [selected, setSelected] = useState([]);
   const [gst, setGst] = useState(false);
   const [invoiceNo, setInvoiceNo] = useState("");
@@ -77,6 +80,20 @@ function Invoice() {
       } catch (err) {
         console.error("Failed to load products:", err);
         message.error("Failed to load products");
+      }
+    };
+
+    const fetchProductSets = async () => {
+      try {
+        const snapshot = await getDocs(collection(db, "productSets"));
+        const setList = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+        setProductSets([DEFAULT_SET, ...setList]);
+      } catch (err) {
+        console.error("Failed to load product sets:", err);
+        message.error("Failed to load product sets");
       }
     };
 
@@ -139,6 +156,7 @@ function Invoice() {
 
     fetchSalespersons();
     fetchProducts();
+    fetchProductSets();
     fetchCustomers();
     fetchNextInvoiceNo();
   }, []);
@@ -432,6 +450,10 @@ function Invoice() {
       id: safeValue(salesperson?.id),
     },
     orderNo: safeValue(orderNo),
+    productSet: {
+      id: safeValue(productSetId),
+      name: safeValue(productSets.find((s) => s.id === productSetId)?.name),
+    },
     gstIncluded: gst,
     finalAmount: Number(finalAmount),
     items: selected.map((item) => ({
@@ -598,6 +620,19 @@ function Invoice() {
       />
 
       <Select
+        style={{ width: 200, marginRight: 12 }}
+        value={productSetId}
+        onChange={(value) => {
+          if (selected.length > 0) {
+            message.info("Selected items cleared for the new product set");
+          }
+          setSelected([]);
+          setProductSetId(value);
+        }}
+        options={productSets.map((s) => ({ label: s.name, value: s.id }))}
+      />
+
+      <Select
         showSearch
         style={{ width: 300 }}
         placeholder="Select Product"
@@ -606,7 +641,7 @@ function Invoice() {
         filterOption={(input, option) =>
           (option?.label ?? "").toLowerCase().includes(input.toLowerCase())
         }
-        options={products.map((p) => ({
+        options={products.filter((p) => getProductSetId(p) === productSetId).map((p) => ({
           label: `${p.name} - ₹${p.price}`,
           value: p.id,
         }))}
