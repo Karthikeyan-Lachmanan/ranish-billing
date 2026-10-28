@@ -21,6 +21,7 @@ function Products() {
   const [activeSetId, setActiveSetId] = useState(DEFAULT_SET_ID);
   const [newSetName, setNewSetName] = useState("");
   const [copyTargetId, setCopyTargetId] = useState(null);
+  const [nameFilter, setNameFilter] = useState("");
 
   // ✅ Correct way: pass db as the first argument
   const productsCollection = collection(db, "products");
@@ -381,9 +382,20 @@ function Products() {
       <h3 style={{ marginTop: "2rem" }}>
         Products in {productSets.find((s) => s.id === activeSetId)?.name}
       </h3>
+      <Input
+        style={{ width: 300, marginBottom: "1rem" }}
+        placeholder="Filter by product name"
+        value={nameFilter}
+        onChange={(e) => setNameFilter(e.target.value)}
+        allowClear
+      />
       <Form form={editingForm} onFinish={handleEditSave}>
         <Table
-          dataSource={products.filter((p) => getProductSetId(p) === activeSetId)}
+          dataSource={products.filter(
+            (p) =>
+              getProductSetId(p) === activeSetId &&
+              (p.name || "").toLowerCase().includes(nameFilter.trim().toLowerCase())
+          )}
           columns={columns}
           rowKey="id"
           pagination={false}

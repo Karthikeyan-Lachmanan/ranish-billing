@@ -1,6 +1,7 @@
 ﻿import { useEffect, useState } from "react";
-import { collection, getDocs, query, where, doc, updateDoc, arrayUnion } from "firebase/firestore";
+import { collection, getDocs, getDoc, query, where, doc, updateDoc, arrayUnion } from "firebase/firestore";
 import { db } from "@/lib/firebase"; // Adjust the path if needed
+import { DEFAULT_SET_ID, getProductSetId } from "@/lib/productSets";
 import { Table, message, Input, Select, Button, Space, Modal, Form, Checkbox, InputNumber, Tag, DatePicker, Card, Row, Col, Statistic } from "antd";
 import * as XLSX from "xlsx";
 import dayjs from "dayjs";
@@ -30,6 +31,10 @@ const parseInvoiceDate = (dateStr) => {
   return isNaN(date.getTime()) ? null : date;
 };
 
+// A bill can be edited only until the first settlement is recorded against it
+const hasSettlement = (invoice) =>
+  (invoice.payments && invoice.payments.length > 0) || (parseFloat(invoice.settledAmount) || 0) > 0;
+
 function InvoiceList() {
   const [invoices, setInvoices] = useState([]);
   const [allInvoices, setAllInvoices] = useState([]);
@@ -53,7 +58,14 @@ function InvoiceList() {
   const [settlingInvoice, setSettlingInvoice] = useState(null);
   const [settlingLoading, setSettlingLoading] = useState(false);
   const [isFullSettlement, setIsFullSettlement] = useState(true);
-  
+
+  // Edit Bill Modal State
+  const [isEditModalVisible, setIsEditModalVisible] = useState(false);
+  const [editingInvoice, setEditingInvoice] = useState(null);
+  const [editItems, setEditItems] = useState([]);
+  const [editLoading, setEditLoading] = useState(false);
+  const [products, setProducts] = useState([]);
+
   const [form] = Form.useForm();
 
   const fetchInvoices = async () => {
@@ -395,6 +407,142 @@ function InvoiceList() {
     }
   };
 
+  const openEditModal = async (record) => {
+    setEditingInvoice(record);
+    setEditItems((record.items || []).map((item, index) => ({ ...item, key: item.id || `existing-${index}` })));
+    setIsEditModalVisible(true);
+
+    if (products.length === 0) {
+      try {
+        const snapshot = await getDocs(collection(db, "products"));
+        setProducts(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+      } catch (err) {
+        console.error("Failed to load products:", err);
+        message.error("Failed to load products");
+      }
+    }
+  };
+
+  const closeEditModal = () => {
+    setIsEditModalVisible(false);
+    setEditingInvoice(null);
+    setEditItems([]);
+  };
+
+  const addEditItem = (productId) => {
+    const product = products.find(p => p.id === productId);
+    if (!product || editItems.find(item => item.id === productId)) return;
+    setEditItems(prev => [
+      ...prev,
+      {
+        key: product.id,
+        id: product.id,
+        name: product.name,
+        hsnCode: product.hsnCode || "21050000",
+        mrp: product.mrp ?? null,
+        quantity: 1,
+        rate: Number(product.price).toFixed(2),
+        amount: Number(product.price).toFixed(2),
+        isNew: true,
+      },
+    ]);
+  };
+
+  const updateEditItemQty = (key, qty) => {
+    setEditItems(prev => prev.map(item =>
+      item.key === key
+        ? { ...item, quantity: qty, amount: (parseFloat(item.rate) * (qty || 0)).toFixed(2) }
+        : item
+    ));
+  };
+
+  const removeEditItem = (key) => {
+    setEditItems(prev => prev.filter(item => item.key !== key));
+  };
+
+  const editSubtotal = editItems.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0);
+  const editFinalAmount = editingInvoice?.gstIncluded ? editSubtotal * 1.05 : editSubtotal;
+
+  const editProductSetId = editingInvoice?.productSet?.id || DEFAULT_SET_ID;
+  const editProductOptions = products
+    .filter(p => getProductSetId(p) === editProductSetId && !editItems.find(item => item.id === p.id))
+    .map(p => ({ label: `${p.name} - ₹${p.price}`, value: p.id }));
+
+  const onEditSubmit = async () => {
+    if (!editingInvoice) return;
+
+    if (editItems.length === 0) {
+      message.error("A bill must have at least one item.");
+      return;
+    }
+    if (editItems.some(item => !item.quantity || item.quantity < 1)) {
+      message.error("Quantity must be at least 1 for every item.");
+      return;
+    }
+
+    setEditLoading(true);
+    try {
+      const invoiceRef = doc(db, "invoices", editingInvoice.id);
+
+      // Re-check against the latest data in case a settlement was recorded meanwhile
+      const latest = await getDoc(invoiceRef);
+      if (!latest.exists() || hasSettlement(latest.data())) {
+        message.error("This bill already has a settlement recorded and can no longer be edited.");
+        closeEditModal();
+        fetchInvoices();
+        return;
+      }
+
+      const items = editItems.map(({ key, isNew, ...item }) => ({
+        ...item,
+        rate: Number(item.rate).toFixed(2),
+        amount: (parseFloat(item.rate) * item.quantity).toFixed(2),
+      }));
+      const subtotal = items.reduce((sum, item) => sum + parseFloat(item.amount), 0);
+      const finalAmount = Number((editingInvoice.gstIncluded ? subtotal * 1.05 : subtotal).toFixed(2));
+
+      await updateDoc(invoiceRef, {
+        items,
+        finalAmount,
+        settledAmount: 0,
+        balanceAmount: finalAmount,
+        paymentStatus: "Pending",
+      });
+
+      message.success(`Bill ${editingInvoice.invoiceNo} updated.`);
+      closeEditModal();
+      fetchInvoices();
+    } catch (error) {
+      console.error("Error updating bill:", error);
+      message.error("Failed to update bill.");
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  const editItemColumns = [
+    { title: "Product", dataIndex: "name", key: "name" },
+    { title: "Rate (₹)", dataIndex: "rate", key: "rate", render: (rate) => formatCurrency(rate) },
+    {
+      title: "Quantity",
+      dataIndex: "quantity",
+      key: "quantity",
+      render: (qty, item) => (
+        <InputNumber min={1} value={qty} onChange={(val) => updateEditItemQty(item.key, val)} />
+      ),
+    },
+    { title: "Amount (₹)", dataIndex: "amount", key: "amount", render: (amount) => formatCurrency(amount) },
+    {
+      title: "Action",
+      key: "action",
+      render: (_, item) => (
+        <Button type="link" danger onClick={() => removeEditItem(item.key)}>
+          Remove
+        </Button>
+      ),
+    },
+  ];
+
   const columns = [
     { title: "Invoice No", dataIndex: "invoiceNo", key: "invoiceNo" },
     {
@@ -454,13 +602,20 @@ function InvoiceList() {
       title: "Action",
       key: "action",
       render: (_, record) => (
-        <Button
-          type="primary"
-          onClick={() => openSettleModal(record)}
-          disabled={record.paymentStatus === "Completed"}
-        >
-          {record.paymentStatus === "Completed" ? "Settled" : "Settle"}
-        </Button>
+        <Space>
+          <Button
+            type="primary"
+            onClick={() => openSettleModal(record)}
+            disabled={record.paymentStatus === "Completed"}
+          >
+            {record.paymentStatus === "Completed" ? "Settled" : "Settle"}
+          </Button>
+          {!hasSettlement(record) && (
+            <Button onClick={() => openEditModal(record)}>
+              Edit
+            </Button>
+          )}
+        </Space>
       ),
     }
   ];
@@ -708,6 +863,56 @@ function InvoiceList() {
             </Button>
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        title={`Edit Bill - ${editingInvoice?.invoiceNo}`}
+        open={isEditModalVisible}
+        onCancel={closeEditModal}
+        footer={null}
+        width={800}
+        destroyOnClose
+      >
+        <div style={{ marginBottom: 16 }}>
+          <strong>Customer:</strong> {editingInvoice?.customer?.name || "-"} <br/>
+          <strong>Date:</strong> {editingInvoice?.date || "-"}
+        </div>
+
+        <Select
+          showSearch
+          style={{ width: "100%", marginBottom: 16 }}
+          placeholder="Add product"
+          optionFilterProp="label"
+          value={null}
+          onSelect={addEditItem}
+          filterOption={(input, option) =>
+            (option?.label ?? "").toLowerCase().includes(input.toLowerCase())
+          }
+          options={editProductOptions}
+        />
+
+        <Table
+          dataSource={editItems}
+          rowKey="key"
+          columns={editItemColumns}
+          pagination={false}
+          size="small"
+        />
+
+        <div style={{ marginTop: 16, textAlign: "right" }}>
+          Subtotal: ₹{formatCurrency(editSubtotal)} <br/>
+          {editingInvoice?.gstIncluded && <>GST 5%: ₹{formatCurrency(editSubtotal * 0.05)} <br/></>}
+          <strong>Final Amount: ₹{formatCurrency(editFinalAmount)}</strong>
+        </div>
+
+        <div style={{ marginTop: 16, textAlign: "right" }}>
+          <Button onClick={closeEditModal} style={{ marginRight: 8 }}>
+            Cancel
+          </Button>
+          <Button type="primary" onClick={onEditSubmit} loading={editLoading}>
+            Save Changes
+          </Button>
+        </div>
       </Modal>
 
       <Modal

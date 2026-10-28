@@ -15,6 +15,7 @@ function Customers() {
   const [customers, setCustomers] = useState([]);
   const [editingKey, setEditingKey] = useState(null);
   const [editingForm] = Form.useForm();
+  const [nameFilter, setNameFilter] = useState("");
 
   const customersCollection = collection(db, "customers");
 
@@ -218,9 +219,18 @@ function Customers() {
       </Form>
 
       <h3 style={{ marginTop: "2rem" }}>All Customers</h3>
+      <Input
+        style={{ width: 300, marginBottom: "1rem" }}
+        placeholder="Filter by customer name"
+        value={nameFilter}
+        onChange={(e) => setNameFilter(e.target.value)}
+        allowClear
+      />
       <Form form={editingForm} onFinish={handleEditSave}>
         <Table
-          dataSource={customers}
+          dataSource={customers.filter((c) =>
+            (c.name || "").toLowerCase().includes(nameFilter.trim().toLowerCase())
+          )}
           columns={columns}
           rowKey="id"
           pagination={false}
