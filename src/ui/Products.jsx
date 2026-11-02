@@ -63,15 +63,27 @@ function Products() {
     }
   };
 
+  const activeSetProductCount = products.filter((p) => getProductSetId(p) === activeSetId).length;
+
+  // Deletes the set along with every product in it; saved bills keep their own item copies
   const handleDeleteSet = async () => {
-    if (products.some((p) => getProductSetId(p) === activeSetId)) {
-      message.warning("Delete or move all products in this set first");
-      return;
-    }
+    if (activeSetId === DEFAULT_SET_ID) return;
+    const setProducts = products.filter((p) => getProductSetId(p) === activeSetId);
     try {
+      // Firestore batches are limited to 500 writes; the set doc goes in the last batch
+      for (let i = 0; i < setProducts.length; i += 500) {
+        const batch = writeBatch(db);
+        setProducts.slice(i, i + 500).forEach((p) => batch.delete(doc(db, "products", p.id)));
+        await batch.commit();
+      }
       await deleteDoc(doc(db, "productSets", activeSetId));
-      message.success("Product set deleted");
+      message.success(
+        `Product set deleted` + (setProducts.length ? ` with ${setProducts.length} product(s)` : "")
+      );
       setActiveSetId(DEFAULT_SET_ID);
+      setEditingKey(null);
+      setCopyTargetId(null);
+      fetchProducts();
       fetchProductSets();
     } catch (error) {
       console.error("Delete set error:", error);
@@ -324,7 +336,17 @@ function Products() {
           options={productSets.map((s) => ({ label: s.name, value: s.id }))}
         />
         {activeSetId !== DEFAULT_SET_ID && (
-          <Popconfirm title="Delete this product set?" onConfirm={handleDeleteSet}>
+          <Popconfirm
+            title="Delete this product set?"
+            description={
+              activeSetProductCount > 0
+                ? `The ${activeSetProductCount} product(s) in this set will also be deleted.`
+                : undefined
+            }
+            okText="Delete"
+            okButtonProps={{ danger: true }}
+            onConfirm={handleDeleteSet}
+          >
             <Button danger>Delete Set</Button>
           </Popconfirm>
         )}
