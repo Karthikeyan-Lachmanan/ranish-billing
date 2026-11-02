@@ -2,6 +2,7 @@
 import { collection, getDocs, getDoc, query, where, doc, updateDoc, arrayUnion } from "firebase/firestore";
 import { db } from "@/lib/firebase"; // Adjust the path if needed
 import { DEFAULT_SET_ID, getProductSetId } from "@/lib/productSets";
+import { DEFAULT_COMPANY, calculateTotals, generateInvoicePdf } from "@/lib/invoicePdf";
 import { Table, message, Input, Select, Button, Space, Modal, Form, Checkbox, InputNumber, Tag, DatePicker, Card, Row, Col, Statistic } from "antd";
 import * as XLSX from "xlsx";
 import dayjs from "dayjs";
@@ -34,6 +35,32 @@ const parseInvoiceDate = (dateStr) => {
 // A bill can be edited only until the first settlement is recorded against it
 const hasSettlement = (invoice) =>
   (invoice.payments && invoice.payments.length > 0) || (parseFloat(invoice.settledAmount) || 0) > 0;
+
+// Older bills store a single productSet; newer ones store every set used in productSets
+const getInvoiceSetIds = (invoice) => {
+  if (invoice?.productSets?.length) return invoice.productSets.map((s) => s.id);
+  return [invoice?.productSet?.id || DEFAULT_SET_ID];
+};
+
+const downloadInvoicePdf = async (invoice) => {
+  try {
+    await generateInvoicePdf({
+      company: invoice.company || DEFAULT_COMPANY,
+      buyer: invoice.customer || {},
+      invoiceNo: invoice.invoiceNo || "",
+      date: invoice.date || "",
+      orderNo: invoice.orderNo || "",
+      salesperson: invoice.salesperson || {},
+      gst: !!invoice.gstIncluded,
+      items: invoice.items || [],
+      discountPercent: invoice.discountPercent || 0,
+      fileName: `invoice_${invoice.invoiceNo || invoice.id}.pdf`,
+    });
+  } catch (err) {
+    console.error("Failed to generate invoice PDF:", err);
+    message.error("Failed to generate invoice PDF.");
+  }
+};
 
 function InvoiceList() {
   const [invoices, setInvoices] = useState([]);
@@ -438,6 +465,7 @@ function InvoiceList() {
         key: product.id,
         id: product.id,
         name: product.name,
+        setId: getProductSetId(product),
         hsnCode: product.hsnCode || "21050000",
         mrp: product.mrp ?? null,
         quantity: 1,
@@ -460,12 +488,15 @@ function InvoiceList() {
     setEditItems(prev => prev.filter(item => item.key !== key));
   };
 
-  const editSubtotal = editItems.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0);
-  const editFinalAmount = editingInvoice?.gstIncluded ? editSubtotal * 1.05 : editSubtotal;
+  const editTotals = calculateTotals(
+    editItems.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0),
+    editingInvoice?.discountPercent,
+    editingInvoice?.gstIncluded
+  );
 
-  const editProductSetId = editingInvoice?.productSet?.id || DEFAULT_SET_ID;
+  const editProductSetIds = getInvoiceSetIds(editingInvoice);
   const editProductOptions = products
-    .filter(p => getProductSetId(p) === editProductSetId && !editItems.find(item => item.id === p.id))
+    .filter(p => editProductSetIds.includes(getProductSetId(p)) && !editItems.find(item => item.id === p.id))
     .map(p => ({ label: `${p.name} - ₹${p.price}`, value: p.id }));
 
   const onEditSubmit = async () => {
@@ -498,11 +529,17 @@ function InvoiceList() {
         rate: Number(item.rate).toFixed(2),
         amount: (parseFloat(item.rate) * item.quantity).toFixed(2),
       }));
-      const subtotal = items.reduce((sum, item) => sum + parseFloat(item.amount), 0);
-      const finalAmount = Number((editingInvoice.gstIncluded ? subtotal * 1.05 : subtotal).toFixed(2));
+      const { subtotal, discountAmount, total } = calculateTotals(
+        items.reduce((sum, item) => sum + parseFloat(item.amount), 0),
+        editingInvoice.discountPercent,
+        editingInvoice.gstIncluded
+      );
+      const finalAmount = Number(total.toFixed(2));
 
       await updateDoc(invoiceRef, {
         items,
+        subtotal: Number(subtotal.toFixed(2)),
+        discountAmount: Number(discountAmount.toFixed(2)),
         finalAmount,
         settledAmount: 0,
         balanceAmount: finalAmount,
@@ -611,9 +648,14 @@ function InvoiceList() {
             {record.paymentStatus === "Completed" ? "Settled" : "Settle"}
           </Button>
           {!hasSettlement(record) && (
-            <Button onClick={() => openEditModal(record)}>
-              Edit
-            </Button>
+            <>
+              <Button onClick={() => openEditModal(record)}>
+                Edit
+              </Button>
+              <Button onClick={() => downloadInvoicePdf(record)}>
+                Download PDF
+              </Button>
+            </>
           )}
         </Space>
       ),
@@ -900,9 +942,10 @@ function InvoiceList() {
         />
 
         <div style={{ marginTop: 16, textAlign: "right" }}>
-          Subtotal: ₹{formatCurrency(editSubtotal)} <br/>
-          {editingInvoice?.gstIncluded && <>GST 5%: ₹{formatCurrency(editSubtotal * 0.05)} <br/></>}
-          <strong>Final Amount: ₹{formatCurrency(editFinalAmount)}</strong>
+          Subtotal: ₹{formatCurrency(editTotals.subtotal)} <br/>
+          {editTotals.discountAmount > 0 && <>Discount ({editingInvoice?.discountPercent}%): -₹{formatCurrency(editTotals.discountAmount)} <br/></>}
+          {editingInvoice?.gstIncluded && <>GST 5%: ₹{formatCurrency(editTotals.gstAmount)} <br/></>}
+          <strong>Final Amount: ₹{formatCurrency(editTotals.total)}</strong>
         </div>
 
         <div style={{ marginTop: 16, textAlign: "right" }}>
